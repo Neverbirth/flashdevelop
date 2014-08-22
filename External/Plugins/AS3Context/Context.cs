@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
+using System.Xml;
 using PluginCore.Managers;
 using ASCompletion.Context;
 using ASCompletion.Model;
@@ -14,6 +15,8 @@ using AS3Context.Compiler;
 using PluginCore.Helpers;
 using System.Timers;
 using ASCompletion.Completion;
+using ProjectManager.Projects;
+using ProjectManager.Projects.AS3;
 
 namespace AS3Context
 {
@@ -21,11 +24,11 @@ namespace AS3Context
     {
         static readonly protected Regex re_genericType =
             new Regex("(?<gen>[^<]+)\\.<(?<type>.+)>$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        
+
         // C:\path\to\Main.as$raw$:31: col: 1:  Error #1084: Syntax error: expecting rightbrace before end of program.
         static readonly protected Regex re_syntaxError =
             new Regex("(?<filename>.*)\\$raw\\$:(?<line>[0-9]+): col: (?<col>[0-9]+):(?<desc>.*)", RegexOptions.Compiled);
-        
+
         static readonly protected Regex re_customAPI =
             new Regex("[/\\\\](playerglobal|airglobal|builtin)\\.swc", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -171,7 +174,6 @@ namespace AS3Context
             //
             classPath = new List<PathModel>();
             MxmlFilter.ClearCatalogs();
-            MxmlFilter.AddProjectManifests();
 
             // SDK
             string compiler = PluginBase.CurrentProject != null
@@ -179,16 +181,17 @@ namespace AS3Context
                 : as3settings.GetDefaultSDK().Path;
 
             char S = Path.DirectorySeparatorChar;
-            if (compiler == null) 
+            if (compiler == null)
                 compiler = Path.Combine(PathHelper.ToolDir, "flexlibs");
             string frameworks = compiler + S + "frameworks";
             string sdkLibs = frameworks + S + "libs";
+
             string sdkLocales = frameworks + S + "locale" + S + PluginBase.MainForm.Settings.LocaleVersion;
             string fallbackLibs = PathHelper.ResolvePath(PathHelper.ToolDir + S + "flexlibs" + S + "frameworks" + S + "libs");
             string fallbackLocale = PathHelper.ResolvePath(PathHelper.ToolDir + S + "flexlibs" + S + "frameworks" + S + "locale" + S + "en_US");
-            List<string> addLibs = new List<string>();
-            List<string> addLocales = new List<string>();
 
+            var buildContext = new BuildEnvironmentContext();
+            List<string> addLocales = new List<string>();
             if (!Directory.Exists(sdkLibs) && !sdkLibs.StartsWith("$")) // fallback
             {
                 sdkLibs = PathHelper.ResolvePath(PathHelper.ToolDir + S + "flexlibs" + S + "frameworks" + S + "libs" + S + "player");
@@ -196,16 +199,23 @@ namespace AS3Context
 
             if (majorVersion > 0 && !String.IsNullOrEmpty(sdkLibs) && Directory.Exists(sdkLibs))
             {
-                // core API SWC
-                if (!hasCustomAPI)
-                    if (hasAIRSupport)
+                // Flex framework
+                // If we're Flex we are using the default config files. Actually, it should be the same way for pure AS3 projects
+                if (cpCheck.IndexOf("Library/AS3/frameworks/Flex", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    bool isFlexJs = cpCheck.IndexOf("Library/AS3/frameworks/FlexJS", StringComparison.OrdinalIgnoreCase) >= 0;
+                    // framework SWCs
+                    string as3Fmk = PathHelper.ResolvePath("Library" + S + "AS3" + S + "frameworks");
+
+                    string defaultConfigFile = "flex-config.xml";
+
+                    if (hasMobileSupport)
+                        defaultConfigFile = "airmobile-config.xml";
+                    else if (hasAIRSupport)
+                        defaultConfigFile = "air-config.xml";
+                    else
                     {
-                        addLibs.Add("air" + S + "airglobal.swc");
-                        addLibs.Add("air" + S + "aircore.swc");
-                        addLibs.Add("air" + S + "applicationupdater.swc");
-                    }
-                    else 
-                    {
+                        // If it's decided to load the default config file for pure AS3 projects we can clean up this together with some more code
                         bool swcPresent = false;
                         string playerglobal = MatchPlayerGlobalExact(majorVersion, minorVersion, sdkLibs);
                         if (playerglobal != null) swcPresent = true;
@@ -231,93 +241,121 @@ namespace AS3Context
                                         File.WriteAllText(swcDir + S + "FlashDevelopNotice.txt",
                                             "This 'playerglobal.swc' was copied here automatically by FlashDevelop from:\r\n" + playerglobal);
                                     }
-                                    playerglobal = swcDir + S + "playerglobal.swc";
                                 }
                                 catch { }
                             }
-                            addLibs.Add(playerglobal);
                         }
                     }
-                addLocales.Add("playerglobal_rb.swc");
 
-                // framework SWCs
-                string as3Fmk = PathHelper.ResolvePath("Library" + S + "AS3" + S + "frameworks");
+                    LoadConfigFile(frameworks + S + defaultConfigFile, buildContext);
 
-                // Flex core - ie. (Bitmap|Font|ByteArray|...)Asset / Flex(Sprite|MobieClip|Loader...)
-                addLibs.Add("flex.swc");
-                addLibs.Add("core.swc");
-                
-                // Flex framework
-                if (cpCheck.IndexOf("Library/AS3/frameworks/Flex", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    bool isFlexJS = cpCheck.IndexOf("Library/AS3/frameworks/FlexJS", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                    if (!isFlexJS)
+                    if (hasCustomAPI)
                     {
-                        addLibs.Add("framework.swc");
-                        addLibs.Add("mx/mx.swc");
-                        addLibs.Add("rpc.swc");
-                        addLibs.Add("datavisualization.swc");
-                        addLibs.Add("flash-integration.swc");
-                        addLocales.Add("framework_rb.swc");
-                        addLocales.Add("mx_rb.swc");
-                        addLocales.Add("rpc_rb.swc");
-                        addLocales.Add("datavisualization_rb.swc");
-                        addLocales.Add("flash-integration_rb.swc");
+                        if (hasAIRSupport)
+                            buildContext.LibPaths.RemoveAll(
+                                x => x.EndsWith("air" + S + "airglobal.swc") || x.EndsWith("air" + S + "aircore.swc") ||
+                                     x.EndsWith("air" + S + "applicationupdater.swc"));
+                        else
+                        {
+                            buildContext.LibPaths.RemoveAll(x => x.EndsWith(S + "playerglobal.swc"));
+                            buildContext.ExternalLibPaths.RemoveAll(x => x.EndsWith(S + "playerglobal.swc"));
+                        }
                     }
 
-                    if (hasAIRSupport)
-                    {
-                        addLibs.Add("air" + S + "airframework.swc");
-                        addLocales.Add("airframework_rb.swc");
-                    }
-
-                    if (isFlexJS)
-                    {
-                        string flexJsLibs = frameworks + S + "as" + S + "libs";
-                        addLibs.Add(flexJsLibs + S + "FlexJSUI.swc");
-                        //addLibs.Add(flexJsLibs + S + "FlexJSJX.swc");
+                    if (isFlexJs)
                         MxmlFilter.AddManifest("http://ns.adobe.com/mxml/2009", as3Fmk + S + "FlexJS" + S + "manifest.xml");
-                    }
                     else if (cpCheck.IndexOf("Library/AS3/frameworks/Flex4", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        addLibs.Add("spark.swc");
-                        addLibs.Add("spark_dmv.swc");
-                        addLibs.Add("sparkskins.swc");
-                        //addLibs.Add("textLayout.swc");
-                        addLibs.Add("osmf.swc");
-                        addLocales.Add("spark_rb.swc");
-                        //addLocales.Add("textLayout_rb.swc");
-                        addLocales.Add("osmf_rb.swc");
-
+                        MxmlFilter.AddManifest("http://ns.adobe.com/mxml/2009", as3Fmk + S + "Flex4" + S + "manifest.xml");
+                    else
+                        MxmlFilter.AddManifest(MxmlFilter.OLD_MX, as3Fmk + S + "Flex3" + S + "manifest.xml");
+                }
+                else
+                {
+                    // core API SWC
+                    if (!hasCustomAPI)
                         if (hasAIRSupport)
                         {
-                            addLibs.Add("air" + S + "airspark.swc");
-                            addLocales.Add("airspark_rb.swc");
-
-                            if (hasMobileSupport)
+                            buildContext.LibPaths.Add("air" + S + "airglobal.swc");
+                            buildContext.LibPaths.Add("air" + S + "aircore.swc");
+                            buildContext.LibPaths.Add("air" + S + "applicationupdater.swc");
+                        }
+                        else
+                        {
+                            bool swcPresent = false;
+                            string playerglobal = MatchPlayerGlobalExact(majorVersion, minorVersion, sdkLibs);
+                            if (playerglobal != null) swcPresent = true;
+                            else playerglobal = MatchPlayerGlobalExact(majorVersion, minorVersion, fallbackLibs);
+                            if (playerglobal == null) playerglobal = MatchPlayerGlobalAny(ref majorVersion, ref minorVersion, fallbackLibs);
+                            if (playerglobal == null) playerglobal = MatchPlayerGlobalAny(ref majorVersion, ref minorVersion, sdkLibs);
+                            if (playerglobal != null)
                             {
-                                addLibs.Add("mobile" + S + "mobilecomponents.swc");
-                                addLocales.Add("mobilecomponents_rb.swc");
+                                // add missing SWC in new SDKs
+                                if (!swcPresent && sdkLibs.IndexOf(S + "flexlibs") < 0 && Directory.Exists(compiler))
+                                {
+                                    string swcDir = sdkLibs + S + "player" + S;
+                                    if (!Directory.Exists(swcDir + "9") && !Directory.Exists(swcDir + "10"))
+                                        swcDir += majorVersion + "." + minorVersion;
+                                    else
+                                        swcDir += majorVersion;
+                                    try
+                                    {
+                                        if (!File.Exists(swcDir + S + "playerglobal.swc"))
+                                        {
+                                            Directory.CreateDirectory(swcDir);
+                                            File.Copy(playerglobal, swcDir + S + "playerglobal.swc");
+                                            File.WriteAllText(swcDir + S + "FlashDevelopNotice.txt",
+                                                "This 'playerglobal.swc' was copied here automatically by FlashDevelop from:\r\n" + playerglobal);
+                                        }
+                                        playerglobal = swcDir + S + "playerglobal.swc";
+                                    }
+                                    catch { }
+                                }
+                                buildContext.ExternalLibPaths.Add(playerglobal);
                             }
                         }
+                    addLocales.Add("playerglobal_rb.swc");
 
-                        MxmlFilter.AddManifest("http://ns.adobe.com/mxml/2009", as3Fmk + S + "Flex4" + S + "manifest.xml");
-                    }
-                    else 
-                    {
-                        MxmlFilter.AddManifest(MxmlFilter.OLD_MX, as3Fmk + S + "Flex3" + S + "manifest.xml");
-                    }
+                    // Flex core - ie. (Bitmap|Font|ByteArray|...)Asset / Flex(Sprite|MovieClip|Loader...)
+                    // Are these needed here?
+                    buildContext.LibPaths.Add("flex.swc");
+                    buildContext.LibPaths.Add("core.swc");
                 }
             }
 
+            AS3Project project = PluginBase.CurrentProject as AS3Project;
+            if (project != null && project.CompileTargets.Count > 0)
+            {
+                var targetFile = project.CompileTargets[0].Substring(0, project.CompileTargets[0].LastIndexOf('.'));
+                var localConfiguration = ProjectPaths.GetAbsolutePath(project.Directory, targetFile + "-config.xml");
+
+                if (localConfiguration != null) LoadConfigFile(localConfiguration, buildContext);
+            }
+
+            CheckAdditionalCompilerOptions(buildContext);
             foreach (string file in addLocales)
             {
                 string swcItem = sdkLocales + S + file;
                 if (!File.Exists(swcItem)) swcItem = fallbackLocale + S + file;
                 AddPath(swcItem);
             }
-            foreach (string file in addLibs)
+            buildContext.LibPaths.Reverse();
+            foreach (string file in buildContext.LibPaths)  // I do not use AddRange to save some cycles, with LINQ I'd use Concat
+            {
+                if (File.Exists(file)) AddPath(file);
+                else AddPath(sdkLibs + S + file);
+            }
+            buildContext.ExternalLibPaths.Reverse();
+            foreach (string file in buildContext.ExternalLibPaths)
+            {
+                if (File.Exists(file)) AddPath(file);
+                else AddPath(sdkLibs + S + file);
+            }
+            foreach (string file in buildContext.RslPaths)
+            {
+                if (File.Exists(file)) AddPath(file);
+                else AddPath(sdkLibs + S + file);
+            }
+            foreach (string file in buildContext.ThemePaths)
             {
                 if (File.Exists(file)) AddPath(file);
                 else AddPath(sdkLibs + S + file);
@@ -351,7 +389,7 @@ namespace AS3Context
 
             // add library
             AddPath(PathHelper.LibraryDir + S + "AS3" + S + "classes");
-			// add user pathes from settings
+            // add user pathes from settings
             if (settings.UserClasspath != null && settings.UserClasspath.Length > 0)
             {
                 foreach (string cpath in settings.UserClasspath) AddPath(cpath.Trim());
@@ -372,6 +410,296 @@ namespace AS3Context
                 SetTemporaryPath(tempPath);
             }
             FinalizeClasspath();
+        }
+
+        /// <summary>
+        /// Look in current project configuration for user-defined config files and Flex themes or namespaces
+        /// <param name="addLibs">
+        /// The libraries that should be added to the project after scanning the options
+        /// </param>
+        /// <remarks>
+        /// Implementation not 100% right, -load-config arguments should be before -theme ones in order to work correctly
+        /// </remarks>
+        /// </summary>
+        private void CheckAdditionalCompilerOptions(BuildEnvironmentContext context)
+        {
+            AS3Project project = PluginBase.CurrentProject as AS3Project;
+            if (project != null)
+            {
+                //-compiler.namespaces.namespace http://e4xu.googlecode.com run\manifest.xml
+                if (project.CompilerOptions.Additional != null)
+                    foreach (string line in project.CompilerOptions.Additional)
+                    {
+                        string temp = line.Trim();
+                        if (temp.StartsWith("-compiler.namespaces.namespace") || temp.StartsWith("-namespace"))
+                        {
+                            int p = temp.IndexOf(' ');
+                            if (p < 0) p = temp.IndexOf('=');
+                            if (p < 0) continue;
+                            temp = temp.Substring(p + 1).Trim();
+                            p = temp.IndexOf(' ');
+                            if (p < 0) p = temp.IndexOf(',');
+                            if (p < 0) continue;
+                            string uri = temp.Substring(0, p);
+                            string path = temp.Substring(p + 1).Trim();
+                            if (path.StartsWith("\"")) path = path.Substring(1, path.Length - 2);
+                            MxmlFilter.AddManifest(uri, PathHelper.ResolvePath(path, project.Directory));
+                        }
+                        else if (temp.StartsWith("-load-config"))
+                        {
+                            bool append = false;
+                            int p = temp.IndexOf("+=");
+                            if (p >= 0) append = true;
+                            else
+                            {
+                                p = temp.IndexOf('=');
+                                if (p < 0) p = temp.IndexOf(' ');
+                                if (p < 0) continue;
+                            }
+                            string path;
+
+                            if (append)
+                                path = temp.Substring(p + 2).Trim();
+                            else
+                            {
+                                context.Clear();
+                                path = temp.Substring(p + 1).Trim();
+                            }
+                            if (path.StartsWith("\"")) path = path.Substring(1, path.Length - 2);
+                            LoadConfigFile(ProjectPaths.GetAbsolutePath(project.Directory, path), context);
+                        }
+                        else if (temp.StartsWith("-theme") || temp.StartsWith("-compiler.theme"))
+                        {
+                            bool append = false;
+                            int p = temp.IndexOf("+=");
+                            if (p >= 0) append = true;
+                            else
+                            {
+                                p = temp.IndexOf('=');
+                                if (p < 0) p = temp.IndexOf(' ');
+                                if (p < 0) continue;
+                            }
+                            string path;
+
+                            if (append)
+                                path = temp.Substring(p + 2).Trim();
+                            else
+                            {
+                                context.ThemePaths.Clear();
+                                path = temp.Substring(p + 1).Trim();
+                            }
+
+                            if (path.StartsWith("\"")) path = path.Substring(1, path.Length - 2);
+                            AddPathElement(ProjectPaths.GetAbsolutePath(project.Directory, path), context.ThemePaths);
+                        }
+                    }
+            }
+        }
+
+        private void LoadConfigFile(string file, BuildEnvironmentContext buildContext)
+        {
+            try
+            {
+                string fileDirectory = Path.GetDirectoryName(file);
+                bool rslChecked = false;
+
+                using (var reader = XmlReader.Create(file))
+                {
+                    reader.MoveToContent();
+                    while (reader.Read())
+                    {
+                        if (reader.NodeType != XmlNodeType.Element) continue;
+
+                        if (reader.Name == "compiler")
+                        {
+                            reader.ReadStartElement();
+
+                            while (reader.Name != "compiler")
+                            {
+                                if (reader.NodeType != XmlNodeType.Element)
+                                {
+                                    reader.Read();
+                                    continue;
+                                }
+
+                                switch (reader.Name)
+                                {
+                                    case "external-library-path":
+                                        if (reader.GetAttribute("append") != "true")
+                                            buildContext.ExternalLibPaths.Clear();
+                                        AddConfigPathElements(reader, fileDirectory, buildContext.ExternalLibPaths);
+
+                                        break;
+
+                                    case "library-path":
+                                        if (reader.GetAttribute("append") != "true")
+                                            buildContext.LibPaths.Clear();
+                                        AddConfigPathElements(reader, fileDirectory, buildContext.LibPaths);
+
+                                        break;
+
+                                    case "namespaces":
+                                        AddConfigManifestElements(reader, fileDirectory);
+
+                                        break;
+
+                                    case "theme":
+                                        if (reader.GetAttribute("append") != "true")
+                                            buildContext.ThemePaths.Clear();
+                                        AddConfigPathElements(reader, fileDirectory, buildContext.ThemePaths);
+
+                                        break;
+                                }
+
+                                reader.Read();
+                            }
+                        }
+                        else if (reader.Name == "runtime-shared-library-path")
+                        {
+                            if (!rslChecked)
+                            {
+                                if (reader.GetAttribute("append") != "true")
+                                    buildContext.RslPaths.Clear();
+                                rslChecked = true;
+                            }
+                            AddConfigPathElements(reader, fileDirectory, buildContext.RslPaths);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //TODO: Display message to the user
+            }
+        }
+
+        private void AddConfigManifestElements(XmlReader reader, string basePath)
+        {
+            const string nameSpaceTag = "namespace";
+            var eon = reader.Name;
+            reader.ReadStartElement();
+            while (reader.Name != eon)
+            {
+                if (reader.NodeType != XmlNodeType.Element && reader.Name != nameSpaceTag)
+                {
+                    reader.Read();
+                    continue;
+                }
+
+                string manifestUri = null;
+                string manifestPath = null;
+
+                reader.ReadStartElement();
+                while (reader.Name != nameSpaceTag)
+                {
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        if (reader.Name == "uri")
+                            manifestUri = reader.ReadElementString();
+                        else if (reader.Name == "manifest")
+                            manifestPath = reader.ReadElementString();
+                    }
+
+                    reader.Read();
+                }
+
+                if (!string.IsNullOrEmpty(manifestUri) && !string.IsNullOrEmpty(manifestPath))
+                {
+                    manifestPath = ProjectPaths.GetAbsolutePath(basePath, manifestPath);
+                    if (File.Exists(manifestPath)) MxmlFilter.AddManifest(manifestUri, manifestPath);
+                }
+                reader.Read();
+            }
+        }
+
+        private void AddConfigPathElements(XmlReader reader, string basePath, List<string> addLibs)
+        {
+            var eon = reader.Name;
+            reader.ReadStartElement();
+            while (reader.Name != eon)
+            {
+                if (reader.NodeType != XmlNodeType.Element && reader.Name != "path-element" && reader.Name != "filename")
+                {
+                    reader.Read();
+                    continue;
+                }
+
+                var value = reader.ReadElementString();
+
+                AddPathElement(ProjectPaths.GetAbsolutePath(basePath, value), addLibs);
+
+                reader.Read();
+            }
+        }
+
+        private void AddPathElement(string path, List<string> addLibs)
+        {
+            if (path.Contains("{targetPlayer"))
+            {
+                path = path.Replace("{targetPlayerMajorVersion}", majorVersion.ToString())
+                             .Replace("{targetPlayerMinorVersion}", minorVersion.ToString());
+            }
+
+            if (path.Contains("{locale}"))
+            {
+                var s = Path.DirectorySeparatorChar;
+                // Adding first global en_US files, and then selected local ones may resolve to the right ones at the end, 
+                //but this method also works and we save time parsing unneeded files
+                var localeDic = new Dictionary<string, string>();
+                if (path.EndsWith("frameworks" + s + "locale" + s + "{locale}"))
+                {
+                    // Let's check for available fallback libraries
+                    string fallbackLocale =
+                        PathHelper.ResolvePath(PathHelper.ToolDir + s + "flexlibs" + s + "frameworks" + s + "locale" +
+                                               s + "en_US");
+
+                    GetLocaleLibraries(fallbackLocale, localeDic);
+                }
+
+                var tmpValue = path.Replace("{locale}", "en_US");
+
+                GetLocaleLibraries(tmpValue, localeDic);
+
+                if (PluginBase.MainForm.Settings.LocaleVersion != LocaleVersion.en_US)
+                {
+                    tmpValue = path.Replace("{locale}", PluginBase.MainForm.Settings.LocaleVersion.ToString());
+
+                    GetLocaleLibraries(tmpValue, localeDic);
+                }
+
+                foreach (var lib in localeDic.Values)
+                    addLibs.Add(lib);
+            }
+            else
+            {
+                if (File.Exists(path))
+                {
+                    if (Path.GetExtension(path).ToUpperInvariant() != ".CSS")
+                        addLibs.Add(path);
+                }
+                else if (Directory.Exists(path))
+                {
+                    foreach (string library in Directory.GetFiles(path, "*.swc"))
+                    {
+                        addLibs.Add(library);
+                    }
+                }
+            }
+        }
+
+        private void GetLocaleLibraries(string source, Dictionary<string, string> localeDic)
+        {
+            if (File.Exists(source))
+            {
+                localeDic[Path.GetFileName(source)] = source;
+            }
+            else if (Directory.Exists(source))
+            {
+                foreach (var lib in Directory.GetFiles(source, "*.swc"))
+                {
+                    localeDic[Path.GetFileName(lib)] = lib;
+                }
+            }
         }
 
         /// <summary>
@@ -424,7 +752,7 @@ namespace AS3Context
                 playerglobal = libPlayer + S + majorVersion + S + "playerglobal.swc";
             return playerglobal;
         }
-        
+
         /// <summary>
         /// Build a list of file mask to explore the classpath
         /// </summary>
@@ -526,7 +854,7 @@ namespace AS3Context
 
         private void GuessPackage(string fileName, FileModel nFile)
         {
-            foreach(PathModel aPath in classPath)
+            foreach (PathModel aPath in classPath)
                 if (fileName.StartsWith(aPath.Path, StringComparison.OrdinalIgnoreCase))
                 {
                     string local = fileName.Substring(aPath.Path.Length);
@@ -722,7 +1050,7 @@ namespace AS3Context
             // same file
             if (inClass.InFile == withClass.InFile)
                 return Visibility.Public | Visibility.Internal | Visibility.Protected | Visibility.Private;
-            
+
             // same package
             Visibility acc = Visibility.Public;
             if (inClass.InFile.Package == withClass.InFile.Package) acc |= Visibility.Internal;
@@ -757,43 +1085,43 @@ namespace AS3Context
             // public & internal classes
             string package = CurrentModel.Package;
             foreach (PathModel aPath in classPath) if (aPath.IsValid && !aPath.Updating)
-            {
-                aPath.ForeachFile((aFile) =>
                 {
-                    if (!aFile.HasPackage)
-                        return true; // skip
+                    aPath.ForeachFile((aFile) =>
+                    {
+                        if (!aFile.HasPackage)
+                            return true; // skip
 
-                    aClass = aFile.GetPublicClass();
-                    if (!aClass.IsVoid() && aClass.IndexType == null)
-                    {
-                        if (aClass.Access == Visibility.Public
-                            || (aClass.Access == Visibility.Internal && aFile.Package == package))
+                        aClass = aFile.GetPublicClass();
+                        if (!aClass.IsVoid() && aClass.IndexType == null)
                         {
-                            item = aClass.ToMemberModel();
-                            item.Name = item.Type;
-                            fullList.Add(item);
+                            if (aClass.Access == Visibility.Public
+                                || (aClass.Access == Visibility.Internal && aFile.Package == package))
+                            {
+                                item = aClass.ToMemberModel();
+                                item.Name = item.Type;
+                                fullList.Add(item);
+                            }
                         }
-                    }
-                    if (aFile.Package.Length > 0 && aFile.Members.Count > 0)
-                    {
-                        foreach (MemberModel member in aFile.Members)
+                        if (aFile.Package.Length > 0 && aFile.Members.Count > 0)
                         {
-                            item = member.Clone() as MemberModel;
-                            item.Name = aFile.Package + "." + item.Name;
-                            fullList.Add(item);
+                            foreach (MemberModel member in aFile.Members)
+                            {
+                                item = member.Clone() as MemberModel;
+                                item.Name = aFile.Package + "." + item.Name;
+                                fullList.Add(item);
+                            }
                         }
-                    }
-                    else if (aFile.Members.Count > 0)
-                    {
-                        foreach (MemberModel member in aFile.Members)
+                        else if (aFile.Members.Count > 0)
                         {
-                            item = member.Clone() as MemberModel;
-                            fullList.Add(item);
+                            foreach (MemberModel member in aFile.Members)
+                            {
+                                item = member.Clone() as MemberModel;
+                                fullList.Add(item);
+                            }
                         }
-                    }
-                    return true;
-                });
-            }
+                        return true;
+                    });
+                }
             // void
             fullList.Add(new MemberModel(features.voidKey, features.voidKey, FlagType.Class | FlagType.Intrinsic, 0));
             // private classes
@@ -848,7 +1176,7 @@ namespace AS3Context
                     sci.InsertText(position + text.Length, insert.Substring(1));
                     sci.CurrentPos = position + text.Length;
                 }
-                else 
+                else
                 {
                     sci.InsertText(position + text.Length, insert);
                     sci.CurrentPos = position + text.Length + insert.Length;
@@ -871,7 +1199,7 @@ namespace AS3Context
         {
             FileModel cFile = ASContext.Context.CurrentModel;
             // same package is auto-imported
-            string package = member.Type.Length > member.Name.Length 
+            string package = member.Type.Length > member.Name.Length
                 ? member.Type.Substring(0, member.Type.Length - member.Name.Length - 1)
                 : "";
             if (package == cFile.Package) return true;
@@ -950,7 +1278,7 @@ namespace AS3Context
         {
             MemberList list = new MemberList();
             // private classes
-            foreach(ClassModel model in cFile.Classes)
+            foreach (ClassModel model in cFile.Classes)
                 if (model.Access == Visibility.Private)
                 {
                     MemberModel item = model.ToMemberModel();
@@ -1041,15 +1369,31 @@ namespace AS3Context
                 MessageBar.ShowWarning(TextHelper.GetString("Info.InvalidClass"));
                 return false;
             }
-            
+
             MainForm.CallCommand("SaveAllModified", null);
 
-            string sdk = PluginBase.CurrentProject != null 
+            string sdk = PluginBase.CurrentProject != null
                     ? PluginBase.CurrentProject.CurrentSDK
                     : as3settings.GetDefaultSDK().Path;
             FlexShells.Instance.QuickBuild(CurrentModel, sdk, failSilently, as3settings.PlayAfterBuild);
             return true;
         }
         #endregion
+
+        private class BuildEnvironmentContext
+        {
+            public List<string> LibPaths = new List<string>();
+            public List<string> ExternalLibPaths = new List<string>();
+            public List<string> ThemePaths = new List<string>();
+            public List<string> RslPaths = new List<string>();
+
+            public void Clear()
+            {
+                LibPaths.Clear();
+                ExternalLibPaths.Clear();
+                ThemePaths.Clear();
+                RslPaths.Clear();
+            }
+        }
     }
 }

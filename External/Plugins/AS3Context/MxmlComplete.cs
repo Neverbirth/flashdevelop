@@ -33,14 +33,14 @@ namespace AS3Context
             {
                 char c = (char)sci.CharAt(pos);
                 if (c <= 32 || c == '/' || c == '>') break;
-                pos ++;
+                pos++;
             }
             XMLContextTag ctag = XMLComplete.GetXMLContextTag(sci, pos);
             if (ctag.Name == null) return true;
             string word = sci.GetWordFromPosition(sci.CurrentPos);
 
             string type = ResolveType(mxmlContext, ctag.Name);
-            ClassModel model = context.ResolveType(type, mxmlContext.model);
+            ClassModel model = context.ResolveType(type, mxmlContext.Model);
 
             if (model.IsVoid()) // try resolving tag as member of parent tag
             {
@@ -49,7 +49,7 @@ namespace AS3Context
                 {
                     ctag = parentTag;
                     type = ResolveType(mxmlContext, ctag.Name);
-                    model = context.ResolveType(type, mxmlContext.model);
+                    model = context.ResolveType(type, mxmlContext.Model);
                     if (model.IsVoid()) return true;
                 }
                 else return true;
@@ -72,14 +72,14 @@ namespace AS3Context
         #endregion
 
         #region tag completion
-        static private XMLContextTag tagContext;
-        static private XMLContextTag parentTag;
+        static internal XMLContextTag tagContext;
+        static internal XMLContextTag parentTag;
         static private string tokenContext;
         static private string checksum;
         static private Dictionary<string, List<string>> allTags;
         //static private Regex reIncPath = new Regex("[\"']([^\"']+)", RegexOptions.Compiled);
         static private Regex reIncPath = new Regex("(\"|')([^\r\n]+)(\\1)", RegexOptions.Compiled);
-        static private Dictionary<string, FileModel> includesCache = new Dictionary<string,FileModel>();
+        static private Dictionary<string, FileModel> includesCache = new Dictionary<string, FileModel>();
 
         /// <summary>
         /// Called 
@@ -99,19 +99,19 @@ namespace AS3Context
             bool isContainer = AddParentAttributes(mix, excludes); // current tag attributes
 
             if (isContainer) // container children tag
-            foreach (string ns in mxmlContext.namespaces.Keys)
-            {
-                string uri = mxmlContext.namespaces[ns];
-                if (ns != "*") mix.Add(new NamespaceItem(ns, uri));
-
-                if (!allTags.ContainsKey(ns)) 
-                    continue;
-                foreach (string tag in allTags[ns])
+                foreach (string ns in mxmlContext.Namespaces.Keys)
                 {
-                    if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
-                    else mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                    string uri = mxmlContext.Namespaces[ns];
+                    if (ns != "*") mix.Add(new NamespaceItem(ns, uri));
+
+                    if (!allTags.ContainsKey(ns))
+                        continue;
+                    foreach (string tag in allTags[ns])
+                    {
+                        if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
+                        else mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                    }
                 }
-            }
 
             // cleanup and show list
             mix.Sort(new MXMLListItemComparer());
@@ -145,7 +145,7 @@ namespace AS3Context
                 else
                 {
                     string parentType = ResolveType(mxmlContext, parentTag.Name);
-                    ClassModel parentClass = context.ResolveType(parentType, mxmlContext.model);
+                    ClassModel parentClass = context.ResolveType(parentType, mxmlContext.Model);
                     if (!parentClass.IsVoid())
                     {
                         parentClass.ResolveExtends();
@@ -158,16 +158,16 @@ namespace AS3Context
 
         static public bool HandleNamespace(object data)
         {
-            if (!GetContext(data) || string.IsNullOrEmpty(tagContext.Name)) 
+            if (!GetContext(data) || string.IsNullOrEmpty(tagContext.Name))
                 return false;
 
             int p = tagContext.Name.IndexOf(':');
             if (p < 0) return false;
             string ns = tagContext.Name.Substring(0, p);
-            if (!mxmlContext.namespaces.ContainsKey(ns)) 
+            if (!mxmlContext.Namespaces.ContainsKey(ns))
                 return true;
 
-            string uri = mxmlContext.namespaces[ns];
+            string uri = mxmlContext.Namespaces[ns];
             List<ICompletionListItem> mix = new List<ICompletionListItem>();
             List<string> excludes = new List<string>();
 
@@ -215,9 +215,9 @@ namespace AS3Context
                 if (type.EndsWith(".Style"))
                 {
                     string snip = "$(Boundary)";
-                    foreach (string ns in mxmlContext.namespaces.Keys)
+                    foreach (string ns in mxmlContext.Namespaces.Keys)
                     {
-                        string uri = mxmlContext.namespaces[ns];
+                        string uri = mxmlContext.Namespaces[ns];
                         if (ns != "fx")
                             snip += String.Format("\n\t@namespace {0} \"{1}\";", ns, uri);
                     }
@@ -234,24 +234,49 @@ namespace AS3Context
             if (!GetContext(data)) return false;
 
             string type = ResolveType(mxmlContext, tagContext.Name);
-            ClassModel tagClass = context.ResolveType(type, mxmlContext.model);
+            ClassModel tagClass = context.ResolveType(type, mxmlContext.Model);
             if (tagClass.IsVoid()) return true;
-            tagClass.ResolveExtends();
 
-            List<ICompletionListItem> mix = new List<ICompletionListItem>();
-            List<string> excludes = new List<string>();
-            GetTagAttributes(tagClass, mix, excludes, null);
-
-            // cleanup and show list
-            mix.Sort(new MXMLListItemComparer());
-            List<ICompletionListItem> items = new List<ICompletionListItem>();
-            string previous = null;
-            foreach (ICompletionListItem item in mix)
+            var dotFound = false;
+            var src = tagContext.Tag;
+            for (var i = tagContext.Tag.Length - 1; i >= 0; i--)
             {
-                if (previous == item.Label) continue;
-                previous = item.Label;
-                if (excludes.Contains(previous)) continue;
-                items.Add(item);
+                char c = src[i];
+                if (char.IsWhiteSpace(c)) break;
+
+                if (c == '.')
+                {
+                    if (dotFound) return true;
+                    dotFound = true;
+                }
+            }
+
+            List<ICompletionListItem> items;
+            if (!dotFound)
+            {
+                tagClass.ResolveExtends();
+
+                List<ICompletionListItem> mix = new List<ICompletionListItem>();
+                List<string> excludes = new List<string>();
+                GetTagAttributes(tagClass, mix, excludes, null);
+
+                // cleanup and show list
+                mix.Sort(new MXMLListItemComparer());
+                string previous = null;
+                items = new List<ICompletionListItem>();
+                foreach (ICompletionListItem item in mix)
+                {
+                    if (previous == item.Label) continue;
+                    previous = item.Label;
+                    if (excludes.Contains(previous)) continue;
+                    items.Add(item);
+                }
+            }
+            else
+            {
+                items = GetAutoCompletionValuesFromType("State");
+                if (items == null || items.Count == 0) return true;
+                items.Sort(new MXMLListItemComparer());
             }
 
             if (items.Count == 0) return true;
@@ -261,12 +286,42 @@ namespace AS3Context
             return true;
         }
 
+        static internal void OnChar(ScintillaNet.ScintillaControl sci, int value)
+        {
+            if (value != '.') return;
+
+            var xmlTag = XMLComplete.GetXMLContextTag(sci, sci.CurrentPos);
+
+            var src = xmlTag.Tag;
+
+            if (string.IsNullOrEmpty(src) || src.StartsWith("<!") || src.StartsWith("<?") || !src.StartsWith("<")) return;
+
+            bool insideAttribute = false;
+            for (int i = src.Length - 2; i >= 0; i--)
+            {
+                char c = src[i];
+                if (Char.IsWhiteSpace(c)) break;
+                if (c == '\'' || c == '"' || c == '<' || c == '>' || c == '&' || c == '/' || c == '.') // . is valid, but we don't want to autocomplete if there is already one
+                {
+                    insideAttribute = false;
+                    break;
+                }
+                insideAttribute = true;
+            }
+            if (!insideAttribute) return;
+            var items = GetAutoCompletionValuesFromType("State");
+            if (items == null || items.Count == 0) return;
+            items.Sort(new MXMLListItemComparer());
+            CompletionList.Show(items, true);
+            CompletionList.MinWordLength = 0;
+        }
+
         static public bool HandleAttributeValue(object data)
         {
             if (!GetContext(data)) return false;
 
             string type = ResolveType(mxmlContext, tagContext.Name);
-            ClassModel tagClass = context.ResolveType(type, mxmlContext.model);
+            ClassModel tagClass = context.ResolveType(type, mxmlContext.Model);
             if (tagClass.IsVoid()) return true;
             tagClass.ResolveExtends();
 
@@ -320,7 +375,7 @@ namespace AS3Context
 
         private static bool GetTagAttributes(ClassModel tagClass, List<ICompletionListItem> mix, List<string> excludes, string ns)
         {
-            ClassModel curClass = mxmlContext.model.GetPublicClass();
+            ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = tagClass;
             FlagType mask = FlagType.Variable | FlagType.Setter;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
@@ -329,6 +384,22 @@ namespace AS3Context
             if (tmpClass.InFile.Package != "mx.builtin" && tmpClass.InFile.Package != "fx.builtin")
                 mix.Add(new HtmlAttributeItem("id", "String", null, ns));
             else isContainer = true;
+
+            if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
+            {
+                // NOTE: Not sure at this moment if FlexJS does support all of these properties. It does at least some of them.
+                if (parentTag.Name == null || parentTag.Name == "fx:Component")
+                    mix.Add(new HtmlAttributeItem("implements", "Interface", "http://ns.adobe.com/mxml/2009"));
+                else if (tagContext.NameSpace != "fx")
+                {
+                    mix.Add(new HtmlAttributeItem("includeIn", "Array", "http://ns.adobe.com/mxml/2009"));
+                    mix.Add(new HtmlAttributeItem("excludeFrom", "Array", "http://ns.adobe.com/mxml/2009"));
+                    mix.Add(new HtmlAttributeItem("itemCreationPolicy", "String", "http://ns.adobe.com/mxml/2009"));
+                    mix.Add(new HtmlAttributeItem("itemDestructionPolicy", "String", "http://ns.adobe.com/mxml/2009"));
+                }
+                else if (tagContext.Name == "fx:Vector")
+                    mix.Add(new HtmlAttributeItem("type", "Class", "http://ns.adobe.com/mxml/2009"));
+            }
 
             while (tmpClass != null && !tmpClass.IsVoid())
             {
@@ -374,13 +445,17 @@ namespace AS3Context
 
         private static List<ICompletionListItem> GetTagAttributeValues(ClassModel tagClass, string ns, string attribute)
         {
-            ClassModel curClass = mxmlContext.model.GetPublicClass();
+            ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = tagClass;
             FlagType mask = FlagType.Variable | FlagType.Setter | FlagType.Getter;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
 
             if (tmpClass.InFile.Package != "mx.builtin" && tmpClass.InFile.Package != "fx.builtin" && attribute == "id")
                 return null;
+
+            List<ICompletionListItem> retVal;
+            if (GetAutoCompletionValuesFromSpecialAttribute(attribute, out retVal))
+                return retVal;
 
             // Inspectable metadata should be appended to getter types, and according to latest guidelines, the attribute have both a getter and setter
             // However, if a component has just a setter I want to autocomplete it if possible, also, the getter or setter may be defined in a super class
@@ -398,7 +473,7 @@ namespace AS3Context
                         if (member.Name == attribute)
                         {
                             string mtype = member.Type;
-                            
+
                             if ((member.Flags & FlagType.Setter) > 0)
                             {
                                 if (member.Parameters != null && member.Parameters.Count > 0)
@@ -429,7 +504,6 @@ namespace AS3Context
 
                     }
 
-                List<ICompletionListItem> retVal;
                 if (GetAutoCompletionValuesFromMetaData(tmpClass.InFile, attribute, tagClass, tmpClass, out retVal))
                     return retVal;
 
@@ -487,14 +561,10 @@ namespace AS3Context
                         case ASMetaKind.Event:
                             string eventType;
                             if (!meta.Params.TryGetValue("type", out eventType)) eventType = "flash.events.Event";
-                            result = GetAutoCompletionValuesFromEventType(eventType);
+                            result = GetAutoCompletionValuesFromEventType(attribute, eventType);
 
                             return true;
-                            break;
                         case ASMetaKind.Style:
-                            string inherit;
-                            if (meta.Params != null && meta.Params.TryGetValue("inherit", out inherit) && inherit == "no" && tagClass != tmpClass)
-                                continue;
                             if (meta.Params != null) meta.Params.TryGetValue("type", out type);
                             break;
                         case ASMetaKind.Effect:
@@ -502,7 +572,7 @@ namespace AS3Context
                             break;
                         case ASMetaKind.Exclude:
                             break;
-                        case ASMetaKind.Include:    // Can this happen? if it happens I guess name == true will never be true? I don't know any test case
+                        case ASMetaKind.Include:    // Can this happen? if it happens I guess name == attribute will never be true? I don't know any test case
                             System.Diagnostics.Debug.Assert(false, "Please, check this case");
                             FileModel incModel = ParseInclude(model, meta);
                             return GetAutoCompletionValuesFromMetaData(incModel, attribute, tagClass, tmpClass, out result);
@@ -530,18 +600,25 @@ namespace AS3Context
             return false;
         }
 
-        private static List<ICompletionListItem> GetAutoCompletionValuesFromEventType(string type)
+        private static List<ICompletionListItem> GetAutoCompletionValuesFromEventType(string eventName, string type)
         {
-            ClassModel tmpClass = mxmlContext.model.GetPublicClass();
-            ClassModel eventClass = context.ResolveType(type, mxmlContext.model);
-            FlagType mask = FlagType.Function;
+            ClassModel inClass = mxmlContext.Model.GetPublicClass();
+            ClassModel tmpClass = inClass;
+            ClassModel eventClass = context.ResolveType(type, mxmlContext.Model);
             Visibility acc = Visibility.Default | Visibility.Internal | Visibility.Private | Visibility.Protected | Visibility.Public;
 
             tmpClass.ResolveExtends();
             eventClass.ResolveExtends();
 
-            List<ICompletionListItem> result = null;
+            var result = new List<ICompletionListItem>();
             var validTypes = new Dictionary<string, bool>();
+
+            // Obtain attribute value
+            // check if it's a complex expression
+            //   if it is, leave event creation
+            //   if it is not, check if it's an existent member
+            MemberModel autoCompleteMember = null;
+
             while (tmpClass != null && !tmpClass.IsVoid())
             {
                 foreach (MemberModel member in tmpClass.Members)
@@ -574,7 +651,6 @@ namespace AS3Context
 
                         if (!validFunction) continue;
 
-                        if (result == null) result = new List<ICompletionListItem>();
                         result.Add(new MxmlEventHandlerItem(member));
                     }
 
@@ -586,7 +662,49 @@ namespace AS3Context
                 acc = Visibility.Protected | Visibility.Public;
             }
 
+            bool addEventGeneration = true;
+            if (addEventGeneration)
+                MxmlGenerator.FillEventList(result, eventName, type.Substring(type.LastIndexOf(".") + 1), inClass);
+
             return result;
+        }
+
+        private static bool GetAutoCompletionValuesFromSpecialAttribute(string attribute, out List<ICompletionListItem> result)
+        {
+            if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
+            {
+                if ((parentTag.Name == null || parentTag.Name == "fx:Component") && attribute == "implements")
+                {
+                    result = GetAutoCompletionValuesFromType("Interface");
+                    return true;
+                }
+
+                if (tagContext.NameSpace != "fx")
+                {
+                    switch (attribute)
+                    {
+                        case "includeIn":
+                        case "excludeFrom":
+                            result = GetAutoCompletionValuesFromType("State");
+                            return true;
+                        case "itemCreationPolicy":
+                            result = new List<ICompletionListItem>() { new HtmlAttributeItem("deferred"), new HtmlAttributeItem("immediate") };
+                            return true;
+                        case "itemDestructionPolicy":
+                            result = new List<ICompletionListItem>() { new HtmlAttributeItem("auto"), new HtmlAttributeItem("never") };
+                            return true;
+                    }
+                }
+                else if (tagContext.Name == "fx:Vector" && attribute == "type")
+                {
+                    result = GetAutoCompletionValuesFromType("Class");
+                    return true;
+                }
+
+            }
+
+            result = null;
+            return false;
         }
 
         private static List<ICompletionListItem> GetAutoCompletionValuesFromType(string type)
@@ -606,8 +724,7 @@ namespace AS3Context
             }
             else if (type == "Function")
             {
-                ClassModel tmpClass = mxmlContext.model.GetPublicClass();
-                FlagType mask = FlagType.Function;
+                ClassModel tmpClass = mxmlContext.Model.GetPublicClass();
                 Visibility acc = Visibility.Default | Visibility.Internal | Visibility.Private | Visibility.Protected | Visibility.Public;
 
                 tmpClass.ResolveExtends();
@@ -633,12 +750,39 @@ namespace AS3Context
 
                 return result;
             }
+            else if (type == "Interface")
+            {
+                MemberList known = ASContext.Context.GetAllProjectClasses();
+                if (known.Count == 0) return null;
+
+                string prev = null;
+                List<ICompletionListItem> result = null;
+                foreach (MemberModel member in known)
+                {
+                    if ((member.Flags & FlagType.Interface) == 0 || prev == member.Name)
+                        continue;
+                    prev = member.Name;
+                    if (result == null) result = new List<ICompletionListItem>();
+                    result.Add(new MemberItem(member));
+                }
+                return result;
+            }
+            else if (type == "State")
+            {
+                if (mxmlContext.States.Count > 0)
+                {
+                    var result = new List<ICompletionListItem>(mxmlContext.States.Count);
+                    foreach (var state in mxmlContext.States) result.Add(new HtmlAttributeItem(state));
+
+                    return result;
+                }
+            }
             return null;
         }
 
         private static void ExploreMetadatas(FileModel fileModel, List<ICompletionListItem> mix, List<string> excludes, string ns, bool isCurrentModel)
         {
-            if (fileModel == null || fileModel.MetaDatas == null) 
+            if (fileModel == null || fileModel.MetaDatas == null)
                 return;
             ClassModel model = fileModel.GetPublicClass();
             string className = model.IsVoid() ? Path.GetFileNameWithoutExtension(fileModel.FileName) : model.Name;
@@ -650,16 +794,12 @@ namespace AS3Context
                 {
                     case ASMetaKind.Event: add = ":e"; break;
                     case ASMetaKind.Style:
-                        string inherit;
-                        if (meta.Params == null || !meta.Params.TryGetValue("inherit", out inherit) || inherit != "no" || isCurrentModel)
-                        {
-                            add = ":s";
-                            if (meta.Params == null || !meta.Params.TryGetValue("type", out type)) type = "Object";
-                        }
+                        add = ":s";
+                        if (meta.Params == null || !meta.Params.TryGetValue("type", out type)) type = "Object";
                         break;
-                    case ASMetaKind.Effect: 
+                    case ASMetaKind.Effect:
                         add = ":x";
-                        if (meta.Params != null) type = meta.Params["event"]; 
+                        if (meta.Params != null) type = meta.Params["event"];
                         break;
                     case ASMetaKind.Exclude:
                         if (meta.Params != null) excludes.Add(meta.Params["name"]);
@@ -714,7 +854,7 @@ namespace AS3Context
         #region context detection
         private static bool GetContext(object data)
         {
-            if (mxmlContext == null || mxmlContext.model == null) 
+            if (mxmlContext == null || mxmlContext.Model == null)
                 return false;
 
             ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
@@ -742,7 +882,7 @@ namespace AS3Context
 
             // rebuild tags cache?
             string sum = "" + context.GetAllProjectClasses().Count;
-            foreach (string uri in mxmlContext.namespaces.Values)
+            foreach (string uri in mxmlContext.Namespaces.Values)
                 sum += uri;
             if (IsDirty || sum != checksum)
             {
@@ -756,7 +896,7 @@ namespace AS3Context
         #region tag resolution
         private static void GetAllTags()
         {
-            Dictionary<string, string> nss = mxmlContext.namespaces;
+            Dictionary<string, string> nss = mxmlContext.Namespaces;
             MemberList allClasses = context.GetAllProjectClasses();
             Dictionary<string, string> packages = new Dictionary<string, string>();
             allTags = new Dictionary<string, List<string>>();
@@ -790,7 +930,7 @@ namespace AS3Context
                 }
             }
 
-            foreach (MxmlCatalog cat in mxmlContext.catalogs)
+            foreach (MxmlCatalog cat in mxmlContext.Catalogs)
             {
                 List<string> cls = allTags.ContainsKey(cat.NS) ? allTags[cat.NS] : new List<string>();
                 cls.AddRange(cat.Keys);
@@ -808,19 +948,19 @@ namespace AS3Context
 
         public static string ResolveType(MxmlFilterContext ctx, string ns, string name)
         {
-            if (!ctx.namespaces.ContainsKey(ns))
+            if (!ctx.Namespaces.ContainsKey(ns))
                 return name;
 
-            string uri = ctx.namespaces[ns];
+            string uri = ctx.Namespaces[ns];
             if (uri == "*")
                 return name;
             if (uri.EndsWith(".*"))
                 return uri.Substring(0, uri.Length - 1) + name;
 
-            if (uri == MxmlFilter.BETA_MX || uri == MxmlFilter.OLD_MX) 
-                uri = MxmlFilter.NEW_MX;
+            if (uri == MxmlFilter.BETA_MX)
+                uri = MxmlFilter.OLD_MX;
 
-            foreach (MxmlCatalog cat in ctx.catalogs)
+            foreach (MxmlCatalog cat in ctx.Catalogs)
             {
                 if (cat.URI == uri && cat.ContainsKey(name))
                     return cat[name];
@@ -831,7 +971,7 @@ namespace AS3Context
         private static ASResult ResolveAttribute(ClassModel model, string word)
         {
             ASResult result = new ASResult();
-            ClassModel curClass = mxmlContext.model.GetPublicClass();
+            ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = model;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
             List<string> excludes = new List<string>();
@@ -876,23 +1016,40 @@ namespace AS3Context
 
         public int Compare(ICompletionListItem a, ICompletionListItem b)
         {
+            if (a is MxmlGeneratorItem)
+            {
+                if (!(b is MxmlGeneratorItem))
+                {
+                    return -1;
+                }
+            }
+            else if (b is MxmlGeneratorItem)
+            {
+                return 1;
+            }
+
             string a1;
             string b1;
             if (a.Label.Equals(b.Label, StringComparison.OrdinalIgnoreCase))
             {
-                int c = String.Compare("a", "b");
                 if (a is HtmlAttributeItem && b is HtmlTagItem) return 1;
                 else if (b is HtmlAttributeItem && a is HtmlTagItem) return -1;
             }
             if (a is IHtmlCompletionListItem)
             {
                 a1 = ((IHtmlCompletionListItem)a).Name;
+                if (a.Icon == XMLComplete.StyleAttributeIcon) a1 += " 2";
+                else if (a.Icon == XMLComplete.HtmlAttributeIcon) a1 += " 1";
+                else a1 += " 0";
                 if (a.Value.StartsWith("mx:")) a1 += "z"; // push down mx: tags
             }
             else a1 = a.Label;
             if (b is IHtmlCompletionListItem)
             {
                 b1 = ((IHtmlCompletionListItem)b).Name;
+                if (b.Icon == XMLComplete.StyleAttributeIcon) b1 += " 2";
+                else if (b.Icon == XMLComplete.HtmlAttributeIcon) b1 += " 1";
+                else b1 += " 0";
                 if (b.Value.StartsWith("mx:")) b1 += "z"; // push down mx: tags
             }
             else b1 = b.Label;

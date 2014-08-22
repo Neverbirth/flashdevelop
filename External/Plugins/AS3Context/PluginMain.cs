@@ -4,6 +4,7 @@ using System.Text;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using PluginCore.Controls;
 using PluginCore.Localization;
 using PluginCore.Helpers;
 using PluginCore.Managers;
@@ -16,6 +17,7 @@ using AS3Context.Controls;
 using WeifenLuo.WinFormsUI.Docking;
 using System.Windows.Forms;
 using PluginCore;
+using XMLCompletion;
 
 namespace AS3Context
 {
@@ -99,7 +101,7 @@ namespace AS3Context
             get { return settingObject as AS3Settings; }
         }
         #endregion
-        
+
         #region Required Methods
 
         /// <summary>
@@ -129,6 +131,8 @@ namespace AS3Context
         /// </summary>
         public void HandleEvent(Object sender, NotifyEvent e, HandlingPriority priority)
         {
+            if (e.Type == EventType.Command) System.Diagnostics.Debug.WriteLine( (e as DataEvent).Action + " - " + priority.ToString());
+
             if (priority == HandlingPriority.Low)
             {
                 switch (e.Type)
@@ -238,15 +242,15 @@ namespace AS3Context
                         {
                             FlexDebugger.Stop();
                         }
-                        else if (action == "FlashViewer.External" || action == "FlashViewer.Default" 
+                        else if (action == "FlashViewer.External" || action == "FlashViewer.Default"
                             || action == "FlashViewer.Popup" || action == "FlashViewer.Document")
                         {
-                            if (PluginBase.CurrentProject != null 
+                            if (PluginBase.CurrentProject != null
                                 && PluginBase.CurrentProject.EnableInteractiveDebugger)
                             {
                                 DataEvent de = new DataEvent(EventType.Command, "AS3Context.StartProfiler", null);
                                 EventManager.DispatchEvent(this, de);
-                                
+
                                 if (PluginBase.CurrentProject.TraceEnabled)
                                 {
                                     de = new DataEvent(EventType.Command, "AS3Context.StartDebugger", (e as DataEvent).Data);
@@ -282,9 +286,22 @@ namespace AS3Context
                         {
                             de.Handled = MxmlComplete.HandleAttributeValue(de.Data);
                         }
+                        else if (de.Action == "ASCompletion.ContextualGenerator")
+                        {
+                            MxmlGenerator.ContextualGenerator(ASCompletion.Context.ASContext.CurSciControl);
+                        }
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Handles the incoming character
+        /// </summary> 
+        private void OnChar(ScintillaNet.ScintillaControl sci, Int32 value)
+        {
+            if (sci.ConfigurationLanguage == "xml" && sci.Lexer == 5 && inMXML)
+                MxmlComplete.OnChar(sci, value);
         }
 
         private bool OpenVirtualFileModel(string virtualPath)
@@ -381,9 +398,9 @@ namespace AS3Context
             ToolStrip toolbar = PluginBase.MainForm.ToolStrip;
             foreach (ToolStripItem item in toolbar.Items)
             {
-                if (item.Name == "CheckSyntax") 
-                { 
-                    checkSyntax = item; 
+                if (item.Name == "CheckSyntax")
+                {
+                    checkSyntax = item;
                     break;
                 }
             }
@@ -416,6 +433,7 @@ namespace AS3Context
             EventManager.AddEventHandler(this, EventType.UIStarted | EventType.ProcessArgs | EventType.FileSwitch | EventType.FileSave);
             EventManager.AddEventHandler(this, EventType.Command, HandlingPriority.High);
             EventManager.AddEventHandler(this, EventType.Command | EventType.Keys | EventType.ProcessArgs, HandlingPriority.Low);
+            UITools.Manager.OnCharAdded += new UITools.CharAddedHandler(OnChar);
         }
 
         /// <summary>
@@ -637,7 +655,7 @@ namespace AS3Context
             }
 
             string descriptor = Path.Combine(path, "flex-sdk-description.xml");
-            if (!File.Exists(descriptor)) 
+            if (!File.Exists(descriptor))
                 descriptor = Path.Combine(path, "air-sdk-description.xml");
 
             if (File.Exists(descriptor))
@@ -670,7 +688,7 @@ namespace AS3Context
         }
 
         #endregion
-    
+
     }
 
 }

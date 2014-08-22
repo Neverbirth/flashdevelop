@@ -136,9 +136,9 @@ namespace AS3Context
                     if (thisDocs != null)
                     {
                         docPath = (model.Package.Length > 0 ? model.Package + ":" : "globalClassifier:") + type.Name;
-                        if (thisDocs.ContainsKey(docPath))
+                        ASDocItem doc;
+                        if (thisDocs.TryGetValue(docPath, out doc))
                         {
-                            ASDocItem doc = thisDocs[docPath];
                             applyASDoc(doc, type);
                             if (doc.Meta != null) model.MetaDatas = doc.Meta;
                         }
@@ -270,9 +270,7 @@ namespace AS3Context
                             string filename = package.Length > 0 ? "package.as" : "toplevel.as";
                             filename = Path.Combine(package.Replace('.', Path.DirectorySeparatorChar), filename);
                             filename = Path.Combine(path.Path, filename);
-                            if (models.ContainsKey(filename))
-                                model = models[filename];
-                            else
+                            if (!models.TryGetValue(filename, out model))
                             {
                                 model = new FileModel("");
                                 model.Context = context;
@@ -295,7 +293,8 @@ namespace AS3Context
                             if ((member.Flags & FlagType.Setter) > 0) docPath += ":set";
                             else if ((member.Flags & FlagType.Getter) > 0) docPath += ":get";
 
-                            if (thisDocs.ContainsKey(docPath)) applyASDoc(thisDocs[docPath], member);
+                            ASDocItem doc;
+                            if (thisDocs.TryGetValue(docPath, out doc)) applyASDoc(doc, member);
                         }
 
                         member.InFile = model;
@@ -417,8 +416,9 @@ namespace AS3Context
         private static Dictionary<string, ASDocItem> GetDocs(string package)
         {
             string docPackage = package == "" ? "__Global__" : package;
-            if (Docs.ContainsKey(docPackage)) return Docs[docPackage];
-            else return null;
+            Dictionary<string, ASDocItem> retVal;
+            Docs.TryGetValue(docPackage, out retVal);
+            return retVal;
         }
 
         private static MemberList GetMembers(List<MemberInfo> abcMembers, FlagType baseFlags, QName instName)

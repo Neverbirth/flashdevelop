@@ -243,7 +243,7 @@ namespace ASCompletion.Context
                     int position = ASContext.CurSciControl.CurrentPos;
                     foreach (InlineRange range in cFile.InlinedRanges)
                     {
-                        if (position > range.Start && position < range.End) return true;
+                        if (position >= range.Start && position <= range.End && range.Syntax == "as3") return true;
                     }
                     return false;
                 }
@@ -425,10 +425,10 @@ namespace ASCompletion.Context
                         int end = start + sci.GetLine(line).Length;
                         foreach (InlineRange range in context.CurrentModel.InlinedRanges)
                         {
-                            if (start > range.Start && end < range.End)
+                            if (start >= range.Start && end <= range.End)
                             {
                                 needSyntax = range.Syntax;
-                                hasContext = true;
+                                hasContext = needSyntax == "as3";
                                 break;
                             }
                         }
