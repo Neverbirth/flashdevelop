@@ -1072,8 +1072,9 @@ namespace ASCompletion.Context
             result.InClass = ClassModel.VoidClass;
 
             // current class
-            foreach (ClassModel aClass in cFile.Classes)
+            for (int i = cFile.Classes.Count - 1; i >= 0; i--)
             {
+                ClassModel aClass = cFile.Classes[i];
                 if (aClass.LineFrom <= line && aClass.LineTo >= line)
                 {
                     result.InClass = aClass;

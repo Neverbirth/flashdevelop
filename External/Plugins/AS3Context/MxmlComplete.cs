@@ -769,10 +769,25 @@ namespace AS3Context
             }
             else if (type == "State")
             {
-                if (mxmlContext.States.Count > 0)
+                MxmlContextBase ctx = mxmlContext;
+                if (mxmlContext.Components != null)
                 {
-                    var result = new List<ICompletionListItem>(mxmlContext.States.Count);
-                    foreach (var state in mxmlContext.States) result.Add(new HtmlAttributeItem(state));
+                    int pos = ASContext.CurSciControl.CurrentPos;
+                    foreach (var component in mxmlContext.Components)
+                    {
+                        var cOutline = component.Outline[0];
+                        if (cOutline.Start <= pos && cOutline.End >= pos)
+                        {
+                            ctx = component;
+                            break;
+                        }
+                        if (cOutline.Start > pos) break;
+                    }
+                }
+                if (ctx.States != null)
+                {
+                    var result = new List<ICompletionListItem>(ctx.States.Count);
+                    foreach (var state in ctx.States) result.Add(new HtmlAttributeItem(state));
 
                     return result;
                 }
