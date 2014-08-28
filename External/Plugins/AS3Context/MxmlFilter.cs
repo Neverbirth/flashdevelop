@@ -392,7 +392,6 @@ namespace AS3Context
                                     if (src[i] == '/' && src[i + 1] == '>')
                                     {
                                         i++;
-                                        inXml = false;
                                         oMxmlTag.End = i;
                                         oMxmlTag.LineTo = line;
                                         continue;
@@ -428,6 +427,10 @@ namespace AS3Context
 
                                 tagStack.Peek().Model = member;
                             }
+
+                            c = src[i];
+                            // We could copy & paste the following conditions, but I'm 100% against repeating code
+                            if ((c == '/' && src[i + 1] == '>') || c == '>') i--;
                         }
                     }
                     else if (c == '/' && src[i + 1] == '>')
