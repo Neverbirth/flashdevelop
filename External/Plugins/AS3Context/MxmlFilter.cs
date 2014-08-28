@@ -289,11 +289,14 @@ namespace AS3Context
 
                                         if (tag == "/" + fxTag + "Component" && componentScript != null)
                                         {
-                                            componentScript.Append("}");
-                                            componentScripts.Add(componentScript);
-                                            componentContext.Outline.Add(tagStack.Peek());
+                                            if (componentContext != null)
+                                            {
+                                                componentScript.Append("}");
+                                                componentScripts.Add(componentScript);
+                                                componentContext.Outline.Add(tagStack.Peek());
+                                                componentContext = null;
+                                            }
                                             componentScript = null;
-                                            componentContext = null;
                                         }
 
                                         if (tagStack.Count == 0 || tag != "/" + tagStack.Peek().Tag) // Unbalanced or malformed
@@ -355,11 +358,11 @@ namespace AS3Context
                                                     if (src[i] != '/' && src[i + 1] != '>')
                                                     {
                                                         if (className != null)
-                                                            componentScript = new StringBuilder("class ")
+                                                            componentScript = new StringBuilder().AppendLine().Append("class ")
                                                                 .Append(className);
                                                         else
-                                                            componentScript = new StringBuilder("[ExcludeClass]")
-                                                                .AppendLine().Append("class _inline" + anonNo++);  // This should be hidden from autocompletion... ExcludeClass will be handled later
+                                                            componentScript = new StringBuilder().AppendLine().Append("[ExcludeClass]")
+                                                                .AppendLine().Append("class $Anon_" + anonNo++ + ">");  // This should be hidden from autocompletion... ExcludeClass will be handled later
                                                     }
                                                 }
                                             }
@@ -369,7 +372,7 @@ namespace AS3Context
                                                 componentContext = new MxmlContextBase {BaseTag = tag};
                                                 ctx.Components.Add(componentContext);
                                                 string type = MxmlComplete.ResolveType(ctx, tag);
-                                                // Better to use a topLevel Element? opinions? it will be more work for both the developer and the machine, but it won't appear in the auto-completion list
+                                                // Better to use a topLevel Element? opinions? it will be more work for both the developer and the machine
                                                 componentScript.Append(" extends ").Append(type)
                                                     .Append("{private var outerDocument:")
                                                     .Append(name).Append(";");
@@ -507,7 +510,7 @@ namespace AS3Context
             if (componentScripts.Count > 0)
             {
                 foreach (var script in componentScripts)
-                    sb.AppendLine().AppendLine().Append(script.ToString());
+                    sb.AppendLine().Append(script.ToString());
             }
 
             return sb.ToString();
@@ -693,16 +696,42 @@ namespace AS3Context
                 }
             }
 
-            for (int i = 1, count = model.Classes.Count - 1; i < count; i++)
+            for (int i = 1, count = model.Classes.Count; i < count; i++)
             {
                 var pClass = model.Classes[i];
-                var diff = pClass.LineFrom - ctx.Components[i - 1].Outline[0].LineFrom;
+                var ctxComponent = ctx.Components[i - 1];
+                var diff = pClass.LineFrom - ctxComponent.Outline[0].LineFrom;
                 pClass.LineFrom -= diff;
                 pClass.LineTo -= diff;
                 foreach (var pModel in pClass.Members.Items)
                 {
-                    pModel.LineFrom -= diff;
-                    pModel.LineTo -= diff;
+                    if (pModel.Name != "outerDocument")
+                    {
+                        pModel.LineFrom -= diff;
+                        pModel.LineTo -= diff;
+                    }
+                    else
+                    {
+                        pModel.LineFrom = pModel.LineTo = aClass.LineFrom;
+                        pModel.Flags = FlagType.Intrinsic | FlagType.Variable;
+                    }
+                }
+
+                foreach (MemberModel mxmember in ctxComponent.MxmlMembers)
+                {
+                    string tag = mxmember.Type;
+                    string type = null;
+                    if (!resolved.TryGetValue(tag, out type))
+                    {
+                        type = MxmlComplete.ResolveType(ctx, tag);
+                        resolved[tag] = type;
+                    }
+                    MemberModel member = pClass.Members.Search(mxmember.Name, FlagType.Variable, Visibility.Public);
+                    if (member != null)
+                    {
+                        member.Comments = "<" + tag + "/>";
+                        member.Type = type;
+                    }
                 }
             }
         }
