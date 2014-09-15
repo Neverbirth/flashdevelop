@@ -361,8 +361,8 @@ namespace AS3Context
                                                             componentScript = new StringBuilder().AppendLine().Append("class ")
                                                                 .Append(className);
                                                         else
-                                                            componentScript = new StringBuilder().AppendLine().Append("[ExcludeClass]")
-                                                                .AppendLine().Append("class $Anon_" + anonNo++ + ">");  // This should be hidden from autocompletion... ExcludeClass will be handled later
+                                                            componentScript = new StringBuilder().AppendLine()/*.Append("[ExcludeClass]")*/
+                                                                .AppendLine().Append("class $Anon_" + anonNo++);  // Discuss about ExcludeClass...
                                                     }
                                                 }
                                             }
@@ -706,6 +706,7 @@ namespace AS3Context
                 var diff = pClass.LineFrom - ctxComponent.Outline[0].LineFrom;
                 pClass.LineFrom -= diff;
                 pClass.LineTo -= diff;
+                if (pClass.Name.StartsWith("$Anon_")) pClass.Access = Visibility.Default;   // Hack for hiding from completion list, I think it should be done through ExcludeClass, but there is a point to discuss about it
                 foreach (var pModel in pClass.Members.Items)
                 {
                     if (pModel.Name != "outerDocument")
