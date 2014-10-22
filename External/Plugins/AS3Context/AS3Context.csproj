@@ -103,6 +103,7 @@
     <Compile Include="MxmlGenerator.cs" />
     <Compile Include="PluginMain.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Utils\ResourceUtils.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Aga, Version=1.6.1.0, Culture=neutral, PublicKeyToken=fcc90fbf924463a3, processorArchitecture=MSIL">

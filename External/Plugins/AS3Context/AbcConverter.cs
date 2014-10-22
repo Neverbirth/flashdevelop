@@ -140,7 +140,7 @@ namespace AS3Context
                         if (thisDocs.TryGetValue(docPath, out doc))
                         {
                             applyASDoc(doc, type);
-                            if (doc.Meta != null) model.MetaDatas = doc.Meta;
+                            if (doc.Meta != null) type.MetaDatas = doc.Meta;
                         }
                         if (model.Package.Length == 0) docPath = type.Name;
                     }

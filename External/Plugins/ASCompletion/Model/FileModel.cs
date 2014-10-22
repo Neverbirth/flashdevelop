@@ -25,22 +25,37 @@ namespace ASCompletion.Model
         }
     }
 
-    public class ASMetaData: IComparable
+    public interface IMetaData : IComparable
+    {
+        int LineFrom { get; set; }
+        int LineTo { get; set; }
+        string Name { get; set; }
+        Dictionary<string, string> Params { get; set; }
+        string RawParams { get; set; }
+        string Comments { get; set; }
+        ASMetaKind Kind { get; set; }
+
+        void ParseParams(string raw);
+        //string GenerateIntrinsic(bool caching);
+    }
+
+    public class ASMetaData : IMetaData
     {
         static private Regex reNameTypeParams = 
             new Regex("([^\"'\\s]+)\\s*=\\s*[\"']([^\"']+)[\"'],{0,1}\\s*", RegexOptions.Compiled);
 
-        public int LineFrom;
-        public int LineTo;
-        public string Name;
-        public Dictionary<string, string> Params;
-        public string RawParams;
-        public string Comments;
-        public ASMetaKind Kind = ASMetaKind.Unknown;
+        public int LineFrom { get; set; }
+        public int LineTo { get; set; }
+        public string Name { get; set; }
+        public Dictionary<string, string> Params { get; set; }
+        public string RawParams { get; set; }
+        public string Comments { get; set; }
+        public ASMetaKind Kind { get; set; }
 
         public ASMetaData(string name)
         {
             Name = name.Trim();
+            Kind = ASMetaKind.Unknown;
         }
 
         public void ParseParams(string raw)
@@ -122,7 +137,6 @@ namespace ASCompletion.Model
         public List<ClassModel> Classes;
         public MemberList Members;
         public MemberList Regions;
-        public List<ASMetaData> MetaDatas;
 
         public string BasePath
         {
@@ -287,9 +301,6 @@ namespace ASCompletion.Model
                     sb.Append(tab).Append("import ").Append(import.Type).Append(semi).Append(nl);
                 sb.Append(nl);
             }
-
-            // event/style metadatas
-            ASMetaData.GenerateIntrinsic(MetaDatas, sb, nl, tab);
 
             // members			
             string decl;

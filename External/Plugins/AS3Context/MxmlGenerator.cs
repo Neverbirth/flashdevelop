@@ -210,7 +210,7 @@ namespace AS3Context
                     string contextToken;
                     string target = null;
 
-                    if (MxmlComplete.parentTag.Name != null)
+                    if (MxmlComplete.parentTag != null)
                     {
                         var tagName = MxmlComplete.tagContext.Name;
                         var classType = tagName.Substring(tagName.IndexOf(':'));

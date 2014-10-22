@@ -54,6 +54,26 @@ namespace AS3Context
             }
         }
 
+        public MxmlContextBase GetComponentContext(int pos)
+        {
+            MxmlContextBase ctx = this;
+            if (Components != null)
+            {
+                foreach (var component in Components)
+                {
+                    var cOutline = component.Outline[0];
+                    if (cOutline.Start <= pos && cOutline.End >= pos)
+                    {
+                        ctx = component;
+                        break;
+                    }
+                    if (cOutline.Start > pos) break;
+                }
+            }
+
+            return ctx;
+        }
+
     }
 
     class MxmlInlineRange : InlineRange
@@ -325,7 +345,7 @@ namespace AS3Context
                                                 ReadStateTag(mxCtx, src, ref i);
                                             break;
                                         default:
-                                            if (tag == fxTag + "Script" || tag == fxTag + "Style")
+                                            if (tag == fxTag + "Script" || tag == fxTag + "Style" || tag == fxTag + "Metadata")
                                             {
                                                 if (tagStack.Count == 1 || (tagStack.Count >= 4 && componentScript != null))
                                                 {
@@ -339,7 +359,7 @@ namespace AS3Context
                                                     i--;
                                                     if (!fromSource && src[i] != '/' && src[i + 1] != '>')
                                                     {
-                                                        inlineRange = new InlineRange(tag.EndsWith("t") ? "as3" : "css", -1, -1);
+                                                        inlineRange = new InlineRange(tag.EndsWith("e") ? "css" : "as3", -1, -1);
                                                     }
                                                 }
                                             } 
@@ -454,30 +474,33 @@ namespace AS3Context
                 {
                     if (c == '<')
                     {
-                        if (!inCdata && i < len && src[i + 1] == '!' && src[i + 2] == '[' && src.Substring(i + 2, 7) == "[CDATA[")
+                        if (!inCdata)
                         {
-                            i += 8;
-                            inCdata = true;
-                            if (inlineRange != null)
+                            if (i < len && src[i + 1] == '!' && src[i + 2] == '[' && src.Substring(i + 2, 7) == "[CDATA[")
                             {
-                                inlineRange.End = i - 8;
-                                as3ranges.Add(inlineRange);
-                                inlineRange = new InlineRange(inlineRange.Syntax, i + 1, -1);
+                                i += 8;
+                                inCdata = true;
+                                if (inlineRange != null)
+                                {
+                                    inlineRange.End = i - 8;
+                                    as3ranges.Add(inlineRange);
+                                    inlineRange = new InlineRange(inlineRange.Syntax, i + 1, -1);
+                                }
                             }
-                        }
-                        else
-                        {
-                            inXml = true;
-                            if (inlineRange != null)
+                            else
                             {
-                                inlineRange.End = i;
-                                as3ranges.Add(inlineRange);
-                                inlineRange = null;
+                                inXml = true;
+                                if (inlineRange != null)
+                                {
+                                    inlineRange.End = i;
+                                    as3ranges.Add(inlineRange);
+                                    inlineRange = null;
+                                }
+                                /* I have mixed feelings about this, we could either add some extra flag and/or clutter code some more, or make i--
+                                 * Decided to save some cycles and checks doing this. Large mxml files may thank it.
+                                   xmlStart should be below else if (inXml), but variable scope won't allow for it... */
+                                goto xmlStart;
                             }
-                            /* I have mixed feelings about this, we could either add some extra flag and/or clutter code some more, or make i--
-                             * Decided to save some cycles and checks doing this. Large mxml files may thank it.
-                               xmlStart should be below else if (inXml), but variable scope won't allow for it... */
-                            goto xmlStart; 
                         }
                     }
                     else if (c == ']' && inCdata && src[i + 1] == ']' && src[i + 2] == '>')
@@ -667,14 +690,14 @@ namespace AS3Context
             model.InlinedIn = "xml";
             model.InlinedRanges = ctx.As3Ranges;
 
-            if (model.MetaDatas == null) model.MetaDatas = new List<ASMetaData>();
+         /*   if (model.MetaDatas == null) model.MetaDatas = new List<ASMetaData>();
             foreach (string key in ctx.Namespaces.Keys)
             {
                 ASMetaData meta = new ASMetaData("Namespace");
                 meta.Params = new Dictionary<string, string>();
                 meta.Params.Add(key, ctx.Namespaces[key]);
                 model.MetaDatas.Add(meta);
-            }
+            }*/
 
             ClassModel aClass = model.GetPublicClass();
             if (aClass == ClassModel.VoidClass)

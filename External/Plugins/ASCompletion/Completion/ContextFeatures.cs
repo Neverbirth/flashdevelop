@@ -68,6 +68,7 @@ namespace ASCompletion.Completion
 
         // keywords
         public string dot;
+        public int meta = -1;   // Optimized value, we don't handle languages with metadata indicators with more than one char, and we use int instead of char to save on checks
         public string voidKey;
         public string objectKey;
         public string booleanKey;
@@ -137,6 +138,7 @@ namespace ASCompletion.Completion
             if (text != null)
             {
                 string[] tokens = System.Text.RegularExpressions.Regex.Split(text, "\\s+");
+                
                 foreach (string token in tokens)
                 {
                     if (token.Length > 0 && members.Contains(token))

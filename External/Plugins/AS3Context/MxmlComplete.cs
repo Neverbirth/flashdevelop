@@ -28,37 +28,81 @@ namespace AS3Context
             if (sci.ConfigurationLanguage != "xml") return false;
 
             int pos = sci.CurrentPos;
-            int len = sci.TextLength;
-            while (pos < len)
+            int style = sci.BaseStyleAt(pos);
+            XMLContextTag ctag;
+            if (style == 1)
             {
-                char c = (char)sci.CharAt(pos);
-                if (c <= 32 || c == '/' || c == '>') break;
-                pos++;
+                int len = sci.TextLength;
+                while (pos < len)
+                {
+                    char c = (char)sci.CharAt(pos);
+                    if (c <= 32 || c == '/' || c == '>') break;
+                    pos++;
+                }
             }
-            XMLContextTag ctag = XMLComplete.GetXMLContextTag(sci, pos);
+            ctag = XMLComplete.GetXMLContextTag(sci, pos);
             if (ctag.Name == null) return true;
-            string word = sci.GetWordFromPosition(sci.CurrentPos);
+            pos = sci.CurrentPos;
+            string word = sci.GetWordFromPosition(pos);
+            if (word == null) return true;
+            if (style != 1)
+            {
+                if (sci.WordEndPosition(pos, true) == pos) style = sci.BaseStyleAt(pos - 1);
+            }
+            else
+                word = ctag.Name.Substring(ctag.Name.IndexOf(':') + 1);
+
+            if (style == 6) return true; // TODO: attribute values
 
             string type = ResolveType(mxmlContext, ctag.Name);
             ClassModel model = context.ResolveType(type, mxmlContext.Model);
 
+            bool isAttribute;
             if (model.IsVoid()) // try resolving tag as member of parent tag
             {
-                parentTag = XMLComplete.GetParentTag(sci, ctag);
-                if (parentTag.Name != null)
+                parentTag = GetParentTag(ctag.Position, ctag.Closed || ctag.Closing);
+                if (parentTag != null)
                 {
-                    ctag = parentTag;
-                    type = ResolveType(mxmlContext, ctag.Name);
+                    type = ResolveType(mxmlContext, parentTag.Tag);
                     model = context.ResolveType(type, mxmlContext.Model);
                     if (model.IsVoid()) return true;
                 }
                 else return true;
-            }
 
-            if (word != null && !ctag.Name.EndsWith(word))
+                isAttribute = true;
+            }
+            else isAttribute = style == 3;
+
+            if (isAttribute)
             {
-                ASResult found = ResolveAttribute(model, word);
-                ASComplete.OpenDocumentToDeclaration(sci, found);
+                bool hasDot = false;
+                if (style == 1)
+                {
+                    var attrParts = word.Split('.');
+                    word = sci.GetWordFromPosition(pos);
+                    if (attrParts.Length > 1 && word == attrParts[1]) hasDot = true;
+                    else word = attrParts[0];
+                } else 
+                    while (pos >= 0)
+                    {
+                        char c = (char)sci.CharAt(pos);
+                        if (c == '.')
+                        {
+                            hasDot = true;
+                            break;
+                        }
+                        if (c <= 32 || c == '<' || c == ':') break;
+                        pos--;
+                    }
+                if (hasDot) // it's a state modifier
+                {
+                    OpenDocumentToDeclaration(sci, new MxmlResult {State = word});
+                }
+                else
+                {
+                    MxmlResult found = ResolveAttribute(model, word);
+                    OpenDocumentToDeclaration(sci, found);
+                }
             }
             else
             {
@@ -69,11 +113,160 @@ namespace AS3Context
             }
             return true;
         }
+
+        private static void GetStateInfo(string src, int pos, string state, out int end)
+        {
+            end = -1;
+
+            string attrName;
+            do
+            {
+                attrName = MxmlFilter.GetAttributeName(src, ref pos);
+                if (attrName == "name")
+                {
+                    string value = MxmlFilter.GetAttributeValue(src, ref pos);
+                    if (value == null) continue;
+
+                    if (value == state)
+                    {
+                        end = pos - 1;
+                        return;
+                    }
+                }
+                else if (attrName == "stateGroups")
+                {
+                    string value = MxmlFilter.GetAttributeValue(src, ref pos);
+                    if (value == null) continue;
+
+                    foreach (var stateGroup in value.Split(','))
+                    {
+                        var groupName = stateGroup.Trim();
+
+                        if (groupName == state)
+                        {
+                            end = pos - 1;
+                            return;
+                        }
+                    }
+                }
+            } while (attrName != null);
+        }
+
+        private static void OpenDocumentToDeclaration(ScintillaNet.ScintillaControl sci, MxmlResult found)
+        {
+            if (found == null) return;
+
+            if (!string.IsNullOrEmpty(found.State))
+            {
+                int pos = sci.CurrentPos;
+                string word = found.State;
+                if (context.CurrentModel.OutOfDate) context.UpdateCurrentFile(false);
+                MxmlContextBase ctx = mxmlContext.GetComponentContext(pos);
+                if (ctx.States != null && ctx.States.Contains(word))
+                {
+                    MxmlInlineRange cr = ctx.Outline[0];
+                    int stateLevel = ctx == mxmlContext ? cr.Level + 2 : cr.Level + 3;
+                    string src = sci.Text;
+                    var stack = new Stack<MxmlInlineRange>();
+                    for (int i = 0, count = mxmlContext.Outline.Count; i < count; i++)
+                    {
+                        var o = mxmlContext.Outline[i];
+                        if (o.Start < cr.Start) continue;
+                        if (o.Start > cr.End) break;
+                        if (stack.Count > 0 && stack.Peek().Level >= o.Level) stack.Pop();
+                        if (o.Tag == "mx:State" || o.Tag == "s:State")
+                        {
+                            var nameSpace = string.Empty;
+                            var nameSpaceIndex = ctx.BaseTag.IndexOf(':');
+                            if (nameSpaceIndex > -1)
+                                nameSpace = ctx.BaseTag.Substring(0, nameSpaceIndex + 1);
+                            if (o.Level == stateLevel && stack.Peek().Tag == nameSpace + "states")
+                            {
+                                int end;
+                                GetStateInfo(src, o.Start + o.Tag.Length + 1, word, out end);
+
+                                if (end > -1)
+                                {
+                                    // For Back command
+                                    int lookupLine = sci.LineFromPosition(sci.CurrentPos);
+                                    int lookupCol = sci.CurrentPos - sci.PositionFromLine(lookupLine);
+                                    ASContext.Panel.SetLastLookupPosition(ASContext.Context.CurrentFile, lookupLine, lookupCol);
+
+                                    int start = end - sci.MBSafeTextLength(word);
+                                    sci.EnsureVisible(sci.LineFromPosition(start));
+                                    sci.SetSel(start, end);
+
+                                    sci.Focus();
+
+                                    break;
+                                }
+                            }
+                        }
+                        stack.Push(o);
+                    }
+                }
+            }
+            else if (found.MetaTag != null)
+            {
+                FileModel model = found.ASResult.InFile;
+                if (model == null || model.FileName == "") return;
+
+                // for Back command
+                if (sci != null)
+                {
+                    int lookupLine = sci.LineFromPosition(sci.CurrentPos);
+                    int lookupCol = sci.CurrentPos - sci.PositionFromLine(lookupLine);
+                    ASContext.Panel.SetLastLookupPosition(ASContext.Context.CurrentFile, lookupLine, lookupCol);
+                }
+
+                if (model != ASContext.Context.CurrentModel)
+                {
+                    // We'll assume meta tags are just on one line and there are no more than one meta on one line...
+                    if (model.FileName.Length > 0 && File.Exists(model.FileName))
+                    {
+                        ASContext.MainForm.OpenEditableDocument(model.FileName, false);
+                        sci = ASContext.CurSciControl;
+                        int i = found.MetaTag.LineFrom;
+                        string line = sci.GetLine(i);
+                        int start = sci.LineIndentPosition(i);
+                        sci.EnsureVisible(i);
+                        sci.SetSel(start, sci.PositionFromLine(i) + sci.MBSafeTextLength(line) - 1);
+                    }
+                    else
+                    {
+                        ASComplete.OpenVirtualFile(model);
+                        sci = ASContext.CurSciControl;
+                        string pattern = string.Format("\\[\\s*{0}\\s*\\(.*name\\s*=\\s*\"{1}\"", found.MetaTag.Kind == ASMetaKind.Style ? "Style" : "Event",
+                            found.MetaTag.Params["name"]);
+                        Regex re = new Regex(pattern);
+                        for (int i = 0, count = sci.LineCount; i < count; i++)
+                        {
+                            string line = sci.GetLine(i);
+
+                            Match m = re.Match(line);
+                            if (m.Success)
+                            {
+                                int start = sci.LineIndentPosition(i);
+                                sci.EnsureVisible(i);
+                                sci.SetSel(start, sci.PositionFromLine(i) + sci.MBSafeTextLength(line) - 1);
+                                break;
+                            }
+                        }
+
+                    }
+                }
+
+            }
+            else if (found.ASResult != null)
+                ASComplete.OpenDocumentToDeclaration(sci, found.ASResult);
+            
+        }
+
         #endregion
 
         #region tag completion
         static internal XMLContextTag tagContext;
-        static internal XMLContextTag parentTag;
+        static internal MxmlInlineRange parentTag;
         static private string tokenContext;
         static private string checksum;
         static private Dictionary<string, List<string>> allTags;
@@ -135,21 +328,23 @@ namespace AS3Context
         private static bool AddParentAttributes(List<ICompletionListItem> mix, List<string> excludes)
         {
             bool isContainer = true;
-            if (parentTag.Name != null) // add parent tag members
+            if (parentTag != null) // add parent tag members
             {
                 if (tagContext.Closing) // closing tag, only show parent tag
                 {
                     isContainer = false;
-                    mix.Add(new HtmlTagItem(parentTag.Name.Substring(parentTag.Name.IndexOf(':') + 1), parentTag.Name + '>'));
+                    mix.Add(new HtmlTagItem(parentTag.Tag.Substring(parentTag.Tag.IndexOf(':') + 1), parentTag.Tag));
                 }
                 else
                 {
-                    string parentType = ResolveType(mxmlContext, parentTag.Name);
+                    string parentType = ResolveType(mxmlContext, parentTag.Tag);
                     ClassModel parentClass = context.ResolveType(parentType, mxmlContext.Model);
                     if (!parentClass.IsVoid())
                     {
                         parentClass.ResolveExtends();
-                        isContainer = GetTagAttributes(parentClass, mix, excludes, parentTag.NameSpace);
+                        int nsSeparator = parentTag.Tag.IndexOf(':');
+                        isContainer = GetTagAttributes(parentClass, mix, excludes, nsSeparator > -1 ? 
+                            parentTag.Tag.Substring(0, nsSeparator) : null);
                     }
                 }
             }
@@ -388,7 +583,7 @@ namespace AS3Context
             if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
             {
                 // NOTE: Not sure at this moment if FlexJS does support all of these properties. It does at least some of them.
-                if (parentTag.Name == null || parentTag.Name == "fx:Component")
+                if (parentTag == null || parentTag.Tag == "fx:Component")
                     mix.Add(new HtmlAttributeItem("implements", "Interface", "http://ns.adobe.com/mxml/2009"));
                 else if (tagContext.NameSpace != "fx")
                 {
@@ -431,7 +626,7 @@ namespace AS3Context
                         mix.Add(new HtmlAttributeItem(member.Name, mtype, className, ns));
                     }
 
-                ExploreMetadatas(tmpClass.InFile, mix, excludes, ns, tagClass == tmpClass);
+                ExploreMetadatas(tmpClass, mix, excludes, ns, tagClass == tmpClass);
 
                 tmpClass = tmpClass.Extends;
                 if (tmpClass != null && tmpClass.InFile.Package == "" && tmpClass.Name == "Object")
@@ -464,8 +659,6 @@ namespace AS3Context
             string setterType = null;
             while (tmpClass != null && !tmpClass.IsVoid())
             {
-                string className = tmpClass.Name;
-
                 foreach (MemberModel member in tmpClass.Members)
                     if ((member.Flags & FlagType.Dynamic) > 0 && (member.Flags & mask) > 0
                         && (member.Access & acc) > 0)
@@ -504,7 +697,7 @@ namespace AS3Context
 
                     }
 
-                if (GetAutoCompletionValuesFromMetaData(tmpClass.InFile, attribute, tagClass, tmpClass, out retVal))
+                if (GetAutoCompletionValuesFromMetaData(tmpClass, attribute, out retVal))
                     return retVal;
 
                 tmpClass = tmpClass.Extends;
@@ -546,7 +739,7 @@ namespace AS3Context
             return GetAutoCompletionValuesFromType(type);
         }
 
-        private static bool GetAutoCompletionValuesFromMetaData(FileModel model, string attribute, ClassModel tagClass, ClassModel tmpClass, out List<ICompletionListItem> result)
+        private static bool GetAutoCompletionValuesFromMetaData(ClassModel model, string attribute, out List<ICompletionListItem> result)
         {
             if (model != null && model.MetaDatas != null)
             {
@@ -572,10 +765,10 @@ namespace AS3Context
                             break;
                         case ASMetaKind.Exclude:
                             break;
-                        case ASMetaKind.Include:    // Can this happen? if it happens I guess name == attribute will never be true? I don't know any test case
+                        case ASMetaKind.Include:    // TODO: Check this case...
                             System.Diagnostics.Debug.Assert(false, "Please, check this case");
-                            FileModel incModel = ParseInclude(model, meta);
-                            return GetAutoCompletionValuesFromMetaData(incModel, attribute, tagClass, tmpClass, out result);
+                            FileModel incModel = ParseInclude(model.InFile, meta);
+                            return GetAutoCompletionValuesFromMetaData(incModel.GetPublicClass(), attribute, out result);
                     }
                     if (meta.Params != null && meta.Params.ContainsKey("enumeration"))
                     {
@@ -673,7 +866,7 @@ namespace AS3Context
         {
             if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
             {
-                if ((parentTag.Name == null || parentTag.Name == "fx:Component") && attribute == "implements")
+                if ((parentTag == null || parentTag.Tag == "fx:Component") && attribute == "implements")
                 {
                     result = GetAutoCompletionValuesFromType("Interface");
                     return true;
@@ -769,21 +962,7 @@ namespace AS3Context
             }
             else if (type == "State")
             {
-                MxmlContextBase ctx = mxmlContext;
-                if (mxmlContext.Components != null)
-                {
-                    int pos = ASContext.CurSciControl.CurrentPos;
-                    foreach (var component in mxmlContext.Components)
-                    {
-                        var cOutline = component.Outline[0];
-                        if (cOutline.Start <= pos && cOutline.End >= pos)
-                        {
-                            ctx = component;
-                            break;
-                        }
-                        if (cOutline.Start > pos) break;
-                    }
-                }
+                MxmlContextBase ctx = mxmlContext.GetComponentContext(ASContext.CurSciControl.CurrentPos);
                 if (ctx.States != null)
                 {
                     var result = new List<ICompletionListItem>(ctx.States.Count);
@@ -795,13 +974,12 @@ namespace AS3Context
             return null;
         }
 
-        private static void ExploreMetadatas(FileModel fileModel, List<ICompletionListItem> mix, List<string> excludes, string ns, bool isCurrentModel)
+        private static void ExploreMetadatas(ClassModel model, List<ICompletionListItem> mix, List<string> excludes, string ns, bool isCurrentModel)
         {
-            if (fileModel == null || fileModel.MetaDatas == null)
+            if (model == null || model.MetaDatas == null)
                 return;
-            ClassModel model = fileModel.GetPublicClass();
-            string className = model.IsVoid() ? Path.GetFileNameWithoutExtension(fileModel.FileName) : model.Name;
-            foreach (ASMetaData meta in fileModel.MetaDatas)
+            string className = model.IsVoid() ? Path.GetFileNameWithoutExtension(model.InFile.FileName) : model.Name;
+            foreach (ASMetaData meta in model.MetaDatas)
             {
                 string add = null;
                 string type = null;
@@ -820,8 +998,8 @@ namespace AS3Context
                         if (meta.Params != null) excludes.Add(meta.Params["name"]);
                         break;
                     case ASMetaKind.Include:
-                        FileModel incModel = ParseInclude(fileModel, meta);
-                        ExploreMetadatas(incModel, mix, excludes, ns, isCurrentModel);
+                        FileModel incModel = ParseInclude(model.InFile, meta);
+                        ExploreMetadatas(incModel.GetPublicClass(), mix, excludes, ns, isCurrentModel);
                         break;
                 }
                 if (add != null && meta.Params.ContainsKey("name"))
@@ -893,7 +1071,7 @@ namespace AS3Context
             }
 
             // more context
-            parentTag = XMLComplete.GetParentTag(sci, tagContext);
+            parentTag = GetParentTag(tagContext.Position, false);
 
             // rebuild tags cache?
             string sum = "" + context.GetAllProjectClasses().Count;
@@ -905,6 +1083,26 @@ namespace AS3Context
                 GetAllTags();
             }
             return true;
+        }
+
+        private static MxmlInlineRange GetParentTag(int basePos, bool shouldRecheck)
+        {
+            MxmlInlineRange retVal = null;
+            foreach (var m in mxmlContext.Outline)
+            {
+                if (m.Start < basePos && m.End > basePos)
+                {
+                    retVal = m;
+                }
+                else if (m.Start >= basePos)
+                {
+                    if (shouldRecheck && retVal != null)
+                        return GetParentTag(retVal.Start, false);
+                    break;
+                }
+            }
+
+            return retVal;
         }
         #endregion
 
@@ -983,13 +1181,12 @@ namespace AS3Context
             return name;
         }
 
-        private static ASResult ResolveAttribute(ClassModel model, string word)
+        private static MxmlResult ResolveAttribute(ClassModel model, string word)
         {
-            ASResult result = new ASResult();
+            MxmlResult result = new MxmlResult();
             ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = model;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
-            List<string> excludes = new List<string>();
             tmpClass.ResolveExtends();
 
             while (tmpClass != null && !tmpClass.IsVoid())
@@ -998,22 +1195,56 @@ namespace AS3Context
                     if ((member.Flags & FlagType.Dynamic) > 0 && (member.Access & acc) > 0
                         && member.Name == word)
                     {
-                        result.InFile = tmpClass.InFile;
+                        var asResult = new ASResult();
+                        asResult.InFile = tmpClass.InFile;
                         if (member.LineFrom == 0) // cached model, reparse
                         {
-                            result.InFile.OutOfDate = true;
-                            result.InFile.Check();
-                            if (result.InFile.Classes.Count > 0)
+                            asResult.InFile.OutOfDate = true;
+                            asResult.InFile.Check();
+                            if (asResult.InFile.Classes.Count > 0)
                             {
-                                result.InClass = result.InFile.Classes[0];
-                                result.Member = result.InClass.Members.Search(member.Name, member.Flags, 0);
+                                asResult.InClass = asResult.InFile.Classes[0];
+                                asResult.Member = asResult.InClass.Members.Search(member.Name, member.Flags, 0);
                             }
                         }
-                        else result.Member = member;
+                        else asResult.Member = member;
+                        result.ASResult = asResult;
                         return result;
                     }
 
-                // TODO inspect metadata & includes
+                // TODO includes
+                if (tmpClass.MetaDatas != null)
+                    foreach (var meta in tmpClass.MetaDatas)
+                    {
+                        string name;
+                        if ((meta.Kind == ASMetaKind.Event || meta.Kind == ASMetaKind.Style) && meta.Params.TryGetValue("name", out name) && 
+                            name == word)
+                        {
+                            var asResult = new ASResult { InFile = tmpClass.InFile };
+                            if (meta.LineFrom == 0) // cached model, reparse
+                            {
+                                asResult.InFile.OutOfDate = true;
+                                asResult.InFile.Check();
+                                if (asResult.InFile.Classes.Count > 0)
+                                {
+                                    asResult.InClass = asResult.InFile.Classes[0];
+                                    if (asResult.InClass.MetaDatas != null) 
+                                        foreach (var m in asResult.InClass.MetaDatas)
+                                            if (m.Kind == meta.Kind && meta.Params.TryGetValue("name", out name) && name == word) 
+                                                result.MetaTag = m;
+                                }
+                            }
+                            else
+                            {
+                                asResult.InClass = tmpClass;
+                                result.MetaTag = meta;
+                            }
+
+                            result.ASResult = asResult;
+
+                            return result;
+                        }
+                    }
 
                 tmpClass = tmpClass.Extends;
                 if (tmpClass != null && tmpClass.InFile.Package == "" && tmpClass.Name == "Object")
@@ -1070,6 +1301,15 @@ namespace AS3Context
             else b1 = b.Label;
             return string.Compare(a1, b1);
         }
+         
+    }
+
+    class MxmlResult
+    {
+
+        public ASResult ASResult;
+        public ASMetaData MetaTag;
+        public string State;
 
     }
 

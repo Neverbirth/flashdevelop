@@ -97,6 +97,7 @@ namespace AS3Context
 
             // keywords
             features.dot = ".";
+            features.meta = '[';
             features.voidKey = "void";
             features.objectKey = "Object";
             features.booleanKey = "Boolean";
@@ -323,12 +324,19 @@ namespace AS3Context
             }
 
             AS3Project project = PluginBase.CurrentProject as AS3Project;
-            if (project != null && project.CompileTargets.Count > 0)
+            if (project != null)
             {
-                var targetFile = project.CompileTargets[0].Substring(0, project.CompileTargets[0].LastIndexOf('.'));
-                var localConfiguration = ProjectPaths.GetAbsolutePath(project.Directory, targetFile + "-config.xml");
+                if (project.CompileTargets.Count > 0)
+                {
+                    var targetFile = project.CompileTargets[0].Substring(0, project.CompileTargets[0].LastIndexOf('.'));
+                    var localConfiguration = ProjectPaths.GetAbsolutePath(project.Directory, targetFile + "-config.xml");
 
-                if (localConfiguration != null) LoadConfigFile(localConfiguration, buildContext);
+                    if (localConfiguration != null && File.Exists(localConfiguration)) LoadConfigFile(localConfiguration, buildContext);
+                }
+
+                var projectConfig = project.CompilerOptions.LoadConfig;
+                if (!string.IsNullOrEmpty(projectConfig) && File.Exists(projectConfig))
+                    LoadConfigFile(projectConfig, buildContext);
             }
 
             CheckAdditionalCompilerOptions(buildContext);
@@ -1377,6 +1385,219 @@ namespace AS3Context
                     : as3settings.GetDefaultSDK().Path;
             FlexShells.Instance.QuickBuild(CurrentModel, sdk, failSilently, as3settings.PlayAfterBuild);
             return true;
+        }
+        #endregion
+
+        #region Completion Helpers
+        public void HandleMetaCompletion(ASExpr expression)
+        {
+            int position = expression.Position;
+            int line = CurSciControl.LineFromPosition(position);
+            MemberModel adornatedMember = null;
+            if (mxmlFilterContext != null)
+            {
+                MxmlInlineRange containerTag = null;
+                foreach (var tag in mxmlFilterContext.Outline)
+                {
+                    if (tag.Start > position) break;
+
+                    if (tag.Start <= position && tag.End >= position)
+                    {
+                        containerTag = tag;
+                    }
+                }
+
+                if (containerTag != null)
+                {
+                    // TODO: Namespace may not be fx or mx
+                    string metaTag = (mxmlFilterContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex3) ? "mx:Metadata" : "fx:Metadata";
+                    // Although we may not be in the main class metadata tag, any class will do
+                    if (containerTag.Tag == metaTag) adornatedMember = mxmlFilterContext.Model.Classes[0];
+                }
+            }
+
+            if (adornatedMember == null)
+            {
+                for (int i = cFile.Classes.Count - 1; i >= 0; i--)
+                {
+                    var tmpClass = cFile.Classes[i];
+
+                    if (tmpClass.LineTo < line) continue;
+
+                    MemberModel tmpMember = null;
+                    if (tmpClass.LineFrom >= line) 
+                        tmpMember = tmpClass;
+                    else
+                        foreach (MemberModel member in tmpClass.Members)
+                        {
+                            if (member.LineFrom >= line)
+                            {
+                                tmpMember = member;
+                                break;
+                            }
+                        }
+
+                    if (tmpMember != null && (adornatedMember == null || tmpMember.LineFrom <= adornatedMember.LineFrom))
+                        adornatedMember = tmpMember;
+                }
+            }
+
+            MetaEntry.DecoratableField fieldType = 0;
+            if (adornatedMember == null) fieldType = MetaEntry.DecoratableField.Attribute;
+            else
+            {
+                if ((adornatedMember.Flags & FlagType.Class) > 0)
+                {
+                    fieldType = MetaEntry.DecoratableField.Class;
+                }
+                else if ((adornatedMember.Flags & FlagType.Function) > 0)
+                {
+                    fieldType = MetaEntry.DecoratableField.Function;
+                }
+                else if ((adornatedMember.Flags & (FlagType.Variable | FlagType.Getter | FlagType.Setter)) > 0)
+                {
+                    fieldType = MetaEntry.DecoratableField.Attribute;
+                }
+            }
+
+            List<ICompletionListItem> list = null;
+            if (expression.Separator == ']')
+            {
+                list = new List<ICompletionListItem>();
+                foreach (var meta in as3settings.AS3Meta)
+                {
+                    if ((meta.DecoratableFields & fieldType) > 0)
+                        list.Add(new MetaItem(meta));
+                }
+            }
+            else if (expression.coma == ComaExpression.MetaDataParameter)
+            {
+                if (expression.WordBefore == null) // TODO: To fix and remove
+                    return;
+
+                list = new List<ICompletionListItem>();
+                MetaEntry metaEntry = null;
+                foreach (var meta in as3settings.AS3Meta)
+                {
+                    if ((meta.DecoratableFields & fieldType) > 0 && meta.Label == expression.WordBefore)
+                    {
+                        metaEntry = meta;
+                    }
+                }
+
+                if (metaEntry == null || metaEntry.Fields == null || metaEntry.Fields.Count == 0) return;
+
+                foreach (var field in metaEntry.Fields)
+                {
+                    list.Add(new DeclarationItem(field.Name));
+                }
+
+            }
+
+            if (list == null || list.Count == 0) return;
+
+            list.Sort(new CompletionItemComparer());
+
+            CompletionList.Show(list, false, expression.Value);
+        }
+
+        /// <summary>
+        /// Meta completion list item
+        /// </summary>
+        public class MetaItem : ICompletionListItem
+        {
+            private MetaEntry meta;
+
+            public MetaItem(MetaEntry meta)
+            {
+                this.meta = meta;
+            }
+
+            public string Label
+            {
+                get
+                {
+                    StringBuilder retVal = new StringBuilder(meta.Label);
+
+                    if (meta.Fields != null && meta.Fields.Count > 0)
+                    {
+                        retVal.Append('(');
+                        foreach (var field in meta.Fields)
+                        {
+                            if (!field.Mandatory)
+                            {
+                                retVal.Append('[').Append(field.Name).Append(']');
+                            } else retVal.Append(field.Name);
+                            retVal.Append(", ");
+                        }
+                        retVal.Remove(retVal.Length - 2, 2);
+                        retVal.Append(')');
+                    }
+
+                    return retVal.ToString();
+                }
+            }
+            public string Description
+            {
+                get
+                {
+                    if (meta.Description != null && meta.Description.Count > 0)
+                    {
+                        var culture = System.Threading.Thread.CurrentThread.CurrentUICulture;
+                        string description;
+
+                        if (!meta.Description.TryGetValue(culture.Name, out description) &&
+                            !meta.Description.TryGetValue(culture.TwoLetterISOLanguageName, out description) &&
+                            !meta.Description.TryGetValue(meta.DefaultDescriptionKey, out description))
+                            
+                            return null;
+
+                        return description;
+                    }
+                    return null;
+                }
+            }
+
+            public System.Drawing.Bitmap Icon
+            {
+                get { return (System.Drawing.Bitmap)Panel.GetIcon(ASCompletion.PluginUI.ICON_DECLARATION); }
+            }
+
+            public string Value
+            {
+                get
+                {
+                    var retVal = new StringBuilder(meta.Label);
+                    if (meta.Fields != null)
+                    {
+                        if (meta.Fields.Count > 1)
+                        {
+                            int fieldCount = 0;
+                            foreach (var field in meta.Fields)
+                            {
+                                if (field.Mandatory)
+                                {
+                                    if (fieldCount == 0) retVal.Append('(');
+                                    retVal.Append(field.Name).Append("=\"\", ");
+                                    fieldCount++;
+                                }
+                            }
+
+                            if (fieldCount > 0)
+                            {
+                                retVal.Remove(retVal.Length - 2, 2);
+                                retVal.Append(')');
+                            }
+                        }
+                        else if (meta.Fields.Count == 1 && meta.Fields[0].Mandatory)
+                        {
+                            retVal.Append("(\"\")");
+                        }
+                    }
+                    retVal.Append(']');
+                    return retVal.ToString();
+                }
+            }
         }
         #endregion
 
