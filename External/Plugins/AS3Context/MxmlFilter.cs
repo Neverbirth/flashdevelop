@@ -622,7 +622,7 @@ namespace AS3Context
         /// </summary>
         internal static string GetAttributeName(string src, ref int i)
         {
-            string name = "";
+            var name = new StringBuilder();
             char c;
             int oldPos = i;
             int len = src.Length;
@@ -634,10 +634,10 @@ namespace AS3Context
                 if (skip && c > 32) skip = false;
                 if (c == '=')
                 {
-                    if (!skip) return name;
-                    else break;
+                    if (!skip) return name.ToString();
+                    break;
                 }
-                else if (!skip && c > 32) name += c;
+                if (!skip && c > 32) name.Append(c);
             }
             i = oldPos;
             return null;
@@ -648,24 +648,89 @@ namespace AS3Context
         /// </summary>
         internal static string GetAttributeValue(string src, ref int i)
         {
-            string value = "";
+            var value = new StringBuilder();
             char c;
             int oldPos = i;
             int len = src.Length;
             bool skip = true;
+            char boundsChar = '\0';
             while (i < len)
             {
                 c = src[i++];
                 if (c == 10 || c == 13) break;
-                if (c == '"')
+                if (skip)
                 {
-                    if (!skip) return value;
-                    else skip = false;
+                    if (c == '"' || c == '\'')
+                    {
+                        skip = false;
+                        boundsChar = c;
+                    }
                 }
-                else if (!skip) value += c;
+                else
+                {
+                    if (c == boundsChar) return value.ToString();
+                    value.Append(c);
+                }
             }
             i = oldPos;
             return null;
+        }
+
+        /// <summary>
+        /// Get the current attribute name, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeName(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            bool startFound = false;
+            while (pos >= 1)
+            {
+                char c = (char)sci.CharAt(pos);
+                if (!startFound)
+                {
+                    if (sci.BaseStyleAt(pos - 1) == MxmlComplete.AttributeStyle) startFound = true;
+                }
+                else
+                {
+                    if (char.IsWhiteSpace(c)) break;
+                    builder.Insert(0, (char)sci.CharAt(pos));
+                }
+                pos--;
+            }
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Get the current attribute value, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeValue(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            while (pos >= 1)
+            {
+                if (sci.BaseStyleAt(pos - 1) != MxmlComplete.AttributeValueStyle) break;
+                builder.Insert(0, (char)sci.CharAt(pos));
+                pos--;
+            }
+            if (builder.Length > 0) builder = builder.Remove(builder.Length - 1, 1);
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Get the current attribute value before base style has been fully applied, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeValueEx(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            while (pos >= 1)
+            {
+                if (sci.BaseStyleAt(pos) != MxmlComplete.BlankStyle) break;
+                builder.Insert(0, (char)sci.CharAt(pos));
+                pos--;
+            }
+
+            return builder.ToString();
         }
 
         /// <summary>

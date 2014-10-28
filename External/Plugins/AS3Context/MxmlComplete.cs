@@ -16,6 +16,7 @@ namespace AS3Context
 {
     class MxmlComplete
     {
+        internal const int BlankStyle = 0;
         internal const int TagStyle = 1;
         internal const int AttributeStyle = 3;
         internal const int AttributeValueStyle = 6;
@@ -544,11 +545,44 @@ namespace AS3Context
                 CompletionList.Show(items, true);
                 CompletionList.MinWordLength = 0;
             }
-            else if (style == AttributeValueStyle)
+            else if (style == AttributeValueStyle || style == BlankStyle)   // for some reason, style = 0 when adding from autocompletion list
             {
-                if (GetParentTag(sci.CurrentPos, false) != null) return;
+                var tag = XMLComplete.GetXMLContextTag(sci, pos);
+                if (!tag.Tag.StartsWith("<") || tag.Tag.StartsWith("<!") || tag.Closing || tag.Closed || GetParentTag(sci.CurrentPos, true) != null) 
+                    return;
 
+                pos++;
+                string attrValue;
+                if (style == AttributeValueStyle)
+                {
+                    attrValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
+                    attrValue += ".";
+                }
+                else
+                    attrValue = MxmlFilter.GetCurrentAttributeValueEx(sci, ref pos);
+                string currentAttribute = MxmlFilter.GetCurrentAttributeName(sci, ref pos);
 
+                if (!currentAttribute.ToUpperInvariant().StartsWith("XMLNS:")) return;
+                string[] steps = attrValue.Split('.');
+                List<ICompletionListItem> mix = GetAutoCompletionValuesFromImports(steps);
+
+                if (mix.Count == 0) return;
+
+                if (mix.Count == MxmlFilter.GetNamespaces().Count)
+                    tokenContext = attrValue;
+
+                List<ICompletionListItem> items = new List<ICompletionListItem>();
+                string previous = null;
+                foreach (ICompletionListItem item in mix)
+                {
+                    if (previous == item.Label) continue;
+                    previous = item.Label;
+                    items.Add(item);
+                }
+
+                if (!string.IsNullOrEmpty(tokenContext)) CompletionList.Show(items, false, tokenContext);
+                else CompletionList.Show(items, true);
+                CompletionList.MinWordLength = 0;
             }
 
         }
@@ -564,112 +598,22 @@ namespace AS3Context
 
             var sci = ASContext.CurSciControl;
             int pos = sci.CurrentPos;
-            bool startFound = false;
 
-            var builder = new StringBuilder();
-            for (int i = pos; i >= 1; i--)
-            {
-                if (sci.BaseStyleAt(i - 1) != AttributeValueStyle) break;
-                builder.Insert(0, (char)sci.CharAt(i));
-            }
-            if (builder.Length > 0) builder = builder.Remove(builder.Length - 1, 1);
-            string attrValue = builder.ToString();
-
-            builder.Length = 0;
-            for (int i = pos; i >= 1; i--)
-            {
-                char c = (char) sci.CharAt(i);
-                if (!startFound)
-                {
-                    if (sci.BaseStyleAt(i - 1) == AttributeStyle) startFound = true;
-                }
-                else
-                {
-                    if (char.IsWhiteSpace(c)) break;
-                    builder.Insert(0, (char)sci.CharAt(i));
-                }
-            }
-            string currentAttribute = builder.ToString();
+            string attrValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
+            string currentAttribute = MxmlFilter.GetCurrentAttributeName(sci, ref pos);
 
             List<ICompletionListItem> mix;
             
             if (parentTag == null && currentAttribute.ToUpperInvariant().StartsWith("XMLNS:"))
             {
-                mix = new List<ICompletionListItem>();
-
-                // Decided to add available namespaces always
-                foreach (string ns in MxmlFilter.GetNamespaces())
-                    mix.Add(new MemberItem(new MemberModel(ns, ns, FlagType.Import, 0)));
-
                 string[] steps = attrValue.Split('.');
-                MemberList elements = new MemberList();
 
-                // root types & packages
-                FileModel baseModel = context.ResolvePackage(null, false);
-                MemberList baseElements = baseModel != null ? baseModel.Imports : null;
-
-                // other classes in same package
-                MemberList localElements = null;
-                if (context.Features.hasPackages && context.CurrentClass.InFile.Package != "")
-                {
-                    FileModel packageElements = context.ResolvePackage(context.CurrentClass.InFile.Package, false);
-
-                    if (packageElements != null)
-                        localElements = packageElements.Imports;
-                }
-                for (int i = 0, count = steps.Length; i < count; i++)
-                {
-                    var current = i != count - 1 ? steps[i] : string.Empty;
-                    //TODO: Improve with .NET 3.5
-                    if (baseElements == null && localElements == null) break;
-                    bool found = false;
-                    if (baseElements != null)
-                        foreach (var import in baseElements.Items)
-                        {
-                            if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
-                            {
-                                if (i != count - 1)
-                                {
-                                    baseModel = context.ResolvePackage(import.FullName, false);
-                                    baseElements = baseModel != null ? baseModel.Imports : null;
-                                    localElements = null;
-                                    found = true;
-                                    break;
-                                }
-                                elements.Add(import);
-                            }
-                        }
-
-                    if (!found) baseElements = null;
-
-                    if (localElements != null)
-                        foreach (var import in localElements.Items)
-                        {
-                            if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
-                            {
-                                if (i != count - 1)
-                                {
-                                    baseModel = context.ResolvePackage(import.FullName, false);
-                                    localElements = baseModel != null ? baseModel.Imports : null;
-                                    baseElements = null;
-                                    found = true;
-                                    break;
-                                }
-                                elements.Add(import);
-                            }
-                        }
-
-                    if (!found) localElements = null;
-                }
-
-                if (elements.Count == 0)
-                    tokenContext = attrValue;
-
-                elements.Sort();
-                foreach (var import in elements.Items)
-                    mix.Add(new MemberItem(import));
+                mix = GetAutoCompletionValuesFromImports(steps);
 
                 if (mix.Count == 0) return true;
+
+                if (mix.Count == MxmlFilter.GetNamespaces().Count || steps.Length == 1)
+                    tokenContext = attrValue;
             }
             else
             {
@@ -688,7 +632,6 @@ namespace AS3Context
                 items.Add(item);
             }
 
-            if (items.Count == 0) return true;
             if (!string.IsNullOrEmpty(tokenContext)) CompletionList.Show(items, false, tokenContext);
             else CompletionList.Show(items, true);
             CompletionList.MinWordLength = 0;
@@ -1099,6 +1042,85 @@ namespace AS3Context
                 }
             }
             return null;
+        }
+
+        private static List<ICompletionListItem> GetAutoCompletionValuesFromImports(string[] steps)
+        {
+            var mix = new List<ICompletionListItem>();
+
+            // Decided to add available namespaces always
+            foreach (string ns in MxmlFilter.GetNamespaces())
+                mix.Add(new MemberItem(new MemberModel(ns, ns, FlagType.Import, 0)));
+            mix.Sort(new MXMLListItemComparer());
+
+            MemberList elements = new MemberList();
+
+            // root types & packages
+            FileModel baseModel = context.ResolvePackage(null, false);
+            MemberList baseElements = baseModel != null ? baseModel.Imports : null;
+
+            // other classes in same package
+            MemberList localElements = null;
+            if (context.Features.hasPackages && context.CurrentClass.InFile.Package != "")
+            {
+                FileModel packageElements = context.ResolvePackage(context.CurrentClass.InFile.Package, false);
+
+                if (packageElements != null)
+                    localElements = packageElements.Imports;
+            }
+            for (int i = 0, count = steps.Length; i < count; i++)
+            {
+                var current = i != count - 1 ? steps[i] : string.Empty;
+                //TODO: Improve with .NET 3.5
+                if (baseElements == null && localElements == null) break;
+                bool found = false;
+                if (baseElements != null)
+                    foreach (var import in baseElements.Items)
+                    {
+                        if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
+                        {
+                            if (i != count - 1)
+                            {
+                                baseModel = context.ResolvePackage(import.FullName, false);
+                                baseElements = baseModel != null ? baseModel.Imports : null;
+                                localElements = null;
+                                found = true;
+                                break;
+                            }
+                            elements.Add(import);
+                        }
+                    }
+
+                if (!found) baseElements = null;
+
+                if (localElements != null)
+                    foreach (var import in localElements.Items)
+                    {
+                        if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
+                        {
+                            if (i != count - 1)
+                            {
+                                baseModel = context.ResolvePackage(import.FullName, false);
+                                localElements = baseModel != null ? baseModel.Imports : null;
+                                baseElements = null;
+                                found = true;
+                                break;
+                            }
+                            elements.Add(import);
+                        }
+                    }
+
+                if (!found) localElements = null;
+            }
+
+            if (elements.Count > 0)
+            {
+                elements.Sort();
+                foreach (var import in elements.Items)
+                    mix.Add(new MemberItem(import));
+            }
+
+            return mix;
         }
 
         private static void ExploreMetadatas(ClassModel model, List<ICompletionListItem> mix, List<string> excludes, string ns, bool isCurrentModel)
