@@ -16,6 +16,11 @@ namespace AS3Context
 {
     class MxmlComplete
     {
+        internal const int TagStyle = 1;
+        internal const int AttributeStyle = 3;
+        internal const int AttributeValueStyle = 6;
+        internal const int AttributeEqualStyle = 8;
+
         static public bool IsDirty;
         static public Context context;
         static public MxmlFilterContext mxmlContext;
@@ -30,7 +35,7 @@ namespace AS3Context
             int pos = sci.CurrentPos;
             int style = sci.BaseStyleAt(pos);
             XMLContextTag ctag;
-            if (style == 1)
+            if (style == TagStyle)
             {
                 int len = sci.TextLength;
                 while (pos < len)
@@ -45,14 +50,14 @@ namespace AS3Context
             pos = sci.CurrentPos;
             string word = sci.GetWordFromPosition(pos);
             if (word == null) return true;
-            if (style != 1)
+            if (style != TagStyle)
             {
                 if (sci.WordEndPosition(pos, true) == pos) style = sci.BaseStyleAt(pos - 1);
             }
             else
                 word = ctag.Name.Substring(ctag.Name.IndexOf(':') + 1);
 
-            if (style == 6) return true; // TODO: attribute values
+            if (style == AttributeValueStyle) return true; // TODO: attribute values
 
             string type = ResolveType(mxmlContext, ctag.Name);
             ClassModel model = context.ResolveType(type, mxmlContext.Model);
@@ -71,12 +76,12 @@ namespace AS3Context
 
                 isAttribute = true;
             }
-            else isAttribute = style == 3;
+            else isAttribute = style == AttributeStyle;
 
             if (isAttribute)
             {
                 bool hasDot = false;
-                if (style == 1)
+                if (style == TagStyle)
                 {
                     var attrParts = word.Split('.');
                     word = sci.GetWordFromPosition(pos);
@@ -485,30 +490,67 @@ namespace AS3Context
         {
             if (value != '.') return;
 
-            var xmlTag = XMLComplete.GetXMLContextTag(sci, sci.CurrentPos);
+            int pos = sci.CurrentPos - 2;
+            int style = sci.BaseStyleAt(pos);
 
-            var src = xmlTag.Tag;
-
-            if (string.IsNullOrEmpty(src) || src.StartsWith("<!") || src.StartsWith("<?") || !src.StartsWith("<")) return;
-
-            bool insideAttribute = false;
-            for (int i = src.Length - 2; i >= 0; i--)
+            if (style == AttributeStyle)
             {
-                char c = src[i];
-                if (Char.IsWhiteSpace(c)) break;
-                if (c == '\'' || c == '"' || c == '<' || c == '>' || c == '&' || c == '/' || c == '.') // . is valid, but we don't want to autocomplete if there is already one
+                char c = (char)sci.CharAt(pos);
+                while (!char.IsWhiteSpace(c))
                 {
-                    insideAttribute = false;
-                    break;
+                    if (c == '.') return;
+
+                    c = (char) sci.CharAt(--pos);
                 }
-                insideAttribute = true;
+
+                var items = GetAutoCompletionValuesFromType("State");
+                if (items == null || items.Count == 0) return;
+                items.Sort(new MXMLListItemComparer());
+                CompletionList.Show(items, true);
+                CompletionList.MinWordLength = 0;
             }
-            if (!insideAttribute) return;
-            var items = GetAutoCompletionValuesFromType("State");
-            if (items == null || items.Count == 0) return;
-            items.Sort(new MXMLListItemComparer());
-            CompletionList.Show(items, true);
-            CompletionList.MinWordLength = 0;
+            else if (style == TagStyle)
+            {
+                var builder = new StringBuilder();
+                char c = (char)sci.CharAt(--pos);
+                while (!char.IsWhiteSpace(c) && c != '<' && c != '/')
+                {
+                    if (c == '.') return;
+
+                    builder.Insert(0, c);
+
+                    c = (char)sci.CharAt(--pos);
+                }
+
+                if (builder.Length == 0) return;
+
+                var tag = builder.ToString();
+
+                string type = ResolveType(mxmlContext, tag);
+                ClassModel model = context.ResolveType(type, mxmlContext.Model);
+
+                if (model.IsVoid()) // try resolving tag as member of parent tag
+                {
+                    parentTag = GetParentTag(pos, c == '/');
+                    if (parentTag == null) return;
+                    type = ResolveType(mxmlContext, parentTag.Tag);
+                    model = context.ResolveType(type, mxmlContext.Model);
+                    if (model.IsVoid()) return;
+                }
+
+                var items = GetAutoCompletionValuesFromType("State");
+                if (items == null || items.Count == 0) return;
+                items.Sort(new MXMLListItemComparer());
+                CompletionList.Show(items, true);
+                CompletionList.MinWordLength = 0;
+            }
+            else if (style == AttributeValueStyle)
+            {
+                if (GetParentTag(sci.CurrentPos, false) != null) return;
+
+
+            }
+
         }
 
         static public bool HandleAttributeValue(object data)
@@ -520,38 +562,123 @@ namespace AS3Context
             if (tagClass.IsVoid()) return true;
             tagClass.ResolveExtends();
 
-            string currentAttribute;
-            StringBuilder caBuilder = new StringBuilder();
-            bool possibleStartFound = false, startFound = false;
-            for (int i = tagContext.Tag.Length - 1; i >= 0; i--)
-            {
-                char currChar = tagContext.Tag[i];
-                if (currChar == '=')
-                {
-                    possibleStartFound = true;
-                }
-                else if (startFound)
-                {
-                    if (Char.IsWhiteSpace(currChar))
-                        break;
+            var sci = ASContext.CurSciControl;
+            int pos = sci.CurrentPos;
+            bool startFound = false;
 
-                    caBuilder.Insert(0, currChar);
-                }
-                else if (possibleStartFound && !Char.IsWhiteSpace(currChar))
+            var builder = new StringBuilder();
+            for (int i = pos; i >= 1; i--)
+            {
+                if (sci.BaseStyleAt(i - 1) != AttributeValueStyle) break;
+                builder.Insert(0, (char)sci.CharAt(i));
+            }
+            if (builder.Length > 0) builder = builder.Remove(builder.Length - 1, 1);
+            string attrValue = builder.ToString();
+
+            builder.Length = 0;
+            for (int i = pos; i >= 1; i--)
+            {
+                char c = (char) sci.CharAt(i);
+                if (!startFound)
                 {
-                    startFound = true;
-                    caBuilder.Insert(0, currChar);
+                    if (sci.BaseStyleAt(i - 1) == AttributeStyle) startFound = true;
+                }
+                else
+                {
+                    if (char.IsWhiteSpace(c)) break;
+                    builder.Insert(0, (char)sci.CharAt(i));
                 }
             }
+            string currentAttribute = builder.ToString();
 
-            currentAttribute = caBuilder.ToString();
+            List<ICompletionListItem> mix;
+            
+            if (parentTag == null && currentAttribute.ToUpperInvariant().StartsWith("XMLNS:"))
+            {
+                mix = new List<ICompletionListItem>();
 
-            List<ICompletionListItem> mix = GetTagAttributeValues(tagClass, null, currentAttribute);
+                // Decided to add available namespaces always
+                foreach (string ns in MxmlFilter.GetNamespaces())
+                    mix.Add(new MemberItem(new MemberModel(ns, ns, FlagType.Import, 0)));
 
-            if (mix == null || mix.Count == 0) return true;
+                string[] steps = attrValue.Split('.');
+                MemberList elements = new MemberList();
+
+                // root types & packages
+                FileModel baseModel = context.ResolvePackage(null, false);
+                MemberList baseElements = baseModel != null ? baseModel.Imports : null;
+
+                // other classes in same package
+                MemberList localElements = null;
+                if (context.Features.hasPackages && context.CurrentClass.InFile.Package != "")
+                {
+                    FileModel packageElements = context.ResolvePackage(context.CurrentClass.InFile.Package, false);
+
+                    if (packageElements != null)
+                        localElements = packageElements.Imports;
+                }
+                for (int i = 0, count = steps.Length; i < count; i++)
+                {
+                    var current = i != count - 1 ? steps[i] : string.Empty;
+                    //TODO: Improve with .NET 3.5
+                    if (baseElements == null && localElements == null) break;
+                    bool found = false;
+                    if (baseElements != null)
+                        foreach (var import in baseElements.Items)
+                        {
+                            if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
+                            {
+                                if (i != count - 1)
+                                {
+                                    baseModel = context.ResolvePackage(import.FullName, false);
+                                    baseElements = baseModel != null ? baseModel.Imports : null;
+                                    localElements = null;
+                                    found = true;
+                                    break;
+                                }
+                                elements.Add(import);
+                            }
+                        }
+
+                    if (!found) baseElements = null;
+
+                    if (localElements != null)
+                        foreach (var import in localElements.Items)
+                        {
+                            if ((import.Flags & FlagType.Package) > 0 && import.Name.StartsWith(current))
+                            {
+                                if (i != count - 1)
+                                {
+                                    baseModel = context.ResolvePackage(import.FullName, false);
+                                    localElements = baseModel != null ? baseModel.Imports : null;
+                                    baseElements = null;
+                                    found = true;
+                                    break;
+                                }
+                                elements.Add(import);
+                            }
+                        }
+
+                    if (!found) localElements = null;
+                }
+
+                if (elements.Count == 0)
+                    tokenContext = attrValue;
+
+                elements.Sort();
+                foreach (var import in elements.Items)
+                    mix.Add(new MemberItem(import));
+
+                if (mix.Count == 0) return true;
+            }
+            else
+            {
+                mix = GetTagAttributeValues(tagClass, null, currentAttribute.Split('.')[0]);
+                if (mix == null || mix.Count == 0) return true;
+                mix.Sort(new MXMLListItemComparer());
+            }
 
             // cleanup and show list
-            mix.Sort(new MXMLListItemComparer());
             List<ICompletionListItem> items = new List<ICompletionListItem>();
             string previous = null;
             foreach (ICompletionListItem item in mix)
