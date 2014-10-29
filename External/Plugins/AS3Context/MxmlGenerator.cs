@@ -24,15 +24,24 @@ namespace AS3Context
             ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
             if (sci == null) return;
 
-            var tagContext = XMLComplete.GetXMLContextTag(sci, sci.CurrentPos);
-            // more context
-            var parentTag = XMLComplete.GetParentTag(sci, tagContext);
+            int pos = sci.CurrentPos;
+            if (sci.BaseStyleAt(pos) != MxmlComplete.AttributeValueStyle) return;
 
-            if (parentTag.Name == null || parentTag.Name == "fx:Component")
+            var tagContext = XMLComplete.GetXMLContextTag(sci, pos);
+            // more context
+            var parentTag = MxmlComplete.GetParentTag(tagContext.Position, false);
+
+            if (parentTag == null || parentTag.Tag == "fx:Component")
             {
+                while (sci.BaseStyleAt(pos + 1) == MxmlComplete.AttributeValueStyle && (char)sci.CharAt(pos) != ',')
+                    pos++;
+                var attValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
+                if (MxmlFilter.GetCurrentAttributeName(sci, ref pos) != "implements") return;
+                var interfaces = attValue.Split(',');
                 List<ICompletionListItem> known = new List<ICompletionListItem>();
                 string label = TextHelper.GetString("ASCompletion.Label.ImplementInterface");
-                known.Add(new MxmlGeneratorItem(label, GeneratorJobType.ImplementInterface, MxmlComplete.context.CurrentClass, "flash.desktop.IFilePromise"));
+                known.Add(new MxmlGeneratorItem(label, GeneratorJobType.ImplementInterface, MxmlComplete.context.CurrentClass, 
+                    interfaces[interfaces.Length - 1].Trim()));
                 CompletionList.Show(known, false);
             }
         }

@@ -1234,7 +1234,7 @@ namespace AS3Context
             return true;
         }
 
-        private static MxmlInlineRange GetParentTag(int basePos, bool shouldRecheck)
+        internal static MxmlInlineRange GetParentTag(int basePos, bool shouldRecheck)
         {
             MxmlInlineRange retVal = null;
             foreach (var m in mxmlContext.Outline)
