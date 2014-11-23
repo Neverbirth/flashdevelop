@@ -1602,8 +1602,14 @@ namespace ASCompletion.Model
                             }
                         }
 
+                        // C style arrays declaration
+                        else if (!inValue && c1 == '[' && features.hasCArrays && curMember != null && curMember.Type != null && ba[i] == ']')
+                        {
+                            if (ba[i] == ']') curMember.Type = features.CArrayTemplate + "@" + curMember.Type;
+                        }
+
                         // metadata
-                        else if (!inValue && c1 == '[')
+                        else if (!inValue && c1 == features.meta)
                         {
                             if (version == 3)
                             {
@@ -1613,10 +1619,6 @@ namespace ASCompletion.Model
                                     carriedMetaData = carriedMetaData ?? new List<ASMetaData>();
                                     carriedMetaData.Add(meta);
                                 }
-                            }
-                            else if (features.hasCArrays && curMember != null && curMember.Type != null)
-                            {
-                                if (ba[i] == ']') curMember.Type = features.CArrayTemplate + "@" + curMember.Type;
                             }
                         }
 

@@ -25,24 +25,13 @@ namespace ASCompletion.Model
         }
     }
 
-    public interface IMetaData : IComparable
-    {
-        int LineFrom { get; set; }
-        int LineTo { get; set; }
-        string Name { get; set; }
-        Dictionary<string, string> Params { get; set; }
-        string RawParams { get; set; }
-        string Comments { get; set; }
-        ASMetaKind Kind { get; set; }
-
-        void ParseParams(string raw);
-        //string GenerateIntrinsic(bool caching);
-    }
-
-    public class ASMetaData : IMetaData
+    public class ASMetaData : IComparable
     {
         static private Regex reNameTypeParams = 
             new Regex("([^\"'\\s]+)\\s*=\\s*[\"']([^\"']+)[\"'],{0,1}\\s*", RegexOptions.Compiled);
+
+        static private Regex reDefaultValueParam =
+            new Regex("[\"']([^\"'\\s]+)[\"']\\s*", RegexOptions.Compiled);
 
         public int LineFrom { get; set; }
         public int LineTo { get; set; }
@@ -58,20 +47,24 @@ namespace ASCompletion.Model
             Kind = ASMetaKind.Unknown;
         }
 
-        public void ParseParams(string raw)
+        public virtual void ParseParams(string raw)
         {
             RawParams = raw;
             Params = new Dictionary<string, string>();
+            var mParams = reNameTypeParams.Matches(raw);
+            if (mParams.Count > 0)
+            {
+                for (int i = 0, c = mParams.Count; i < c; i++)
+                    Params.Add(mParams[i].Groups[1].Value, mParams[i].Groups[2].Value);
+            }
+            else if ((mParams = reDefaultValueParam.Matches(raw)).Count == 1)
+            {
+                Params.Add("default", mParams[0].Groups[1].Value.Trim());
+            }
             if (Enum.IsDefined(typeof(ASMetaKind), Name))
             {
                 Kind = (ASMetaKind)Enum.Parse(typeof(ASMetaKind), Name);
-                var mParams = reNameTypeParams.Matches(raw);
-                if (mParams.Count > 0)
-                {
-                    for (int i = 0, c = mParams.Count; i < c; i++)
-                        Params.Add(mParams[i].Groups[1].Value, mParams[i].Groups[2].Value);
-                }
-                else if (Kind == ASMetaKind.Event || Kind == ASMetaKind.Style) // invalid Event
+                if (mParams.Count == 0 && (Kind == ASMetaKind.Event || Kind == ASMetaKind.Style)) // invalid Event
                     Kind = ASMetaKind.Unknown;
             }
         }
@@ -96,7 +89,7 @@ namespace ASCompletion.Model
                 {
                     sb.Append(meta.RawParams).Append(nl);
                 }
-                else if (meta.Kind != ASMetaKind.Unknown)
+                else
                 {
                     sb.Append(ClassModel.CommentDeclaration(meta.Comments, tab));
                     sb.Append(tab).Append('[').Append(meta.Name).Append('(').Append(meta.RawParams).Append(")] ").Append(nl).Append(nl);

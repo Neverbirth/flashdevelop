@@ -106,7 +106,7 @@ namespace AS3Context
                 }
                 else
                 {
-                    MxmlResult found = ResolveAttribute(model, word);
+                    MxmlResult found = ResolveAttribute(model, word, true);
                     OpenDocumentToDeclaration(sci, found);
                 }
             }
@@ -295,9 +295,9 @@ namespace AS3Context
             List<ICompletionListItem> mix = new List<ICompletionListItem>();
             List<string> excludes = new List<string>();
 
-            bool isContainer = AddParentAttributes(mix, excludes); // current tag attributes
+            string containedType = AddParentAttributes(mix, excludes); // current tag attributes
 
-            if (isContainer) // container children tag
+            if (containedType != null) // container children tag
                 foreach (string ns in mxmlContext.Namespaces.Keys)
                 {
                     string uri = mxmlContext.Namespaces[ns];
@@ -308,7 +308,8 @@ namespace AS3Context
                     foreach (string tag in allTags[ns])
                     {
                         if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
-                        else mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                        else if (containedType == "Object" || IsAssignableFrom(containedType, context.ResolveType(ResolveType(mxmlContext, ns, tag), mxmlContext.Model)))
+                            mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
                     }
                 }
 
@@ -331,30 +332,97 @@ namespace AS3Context
             return true;
         }
 
-        private static bool AddParentAttributes(List<ICompletionListItem> mix, List<string> excludes)
+        private static string AddParentAttributes(List<ICompletionListItem> mix, List<string> excludes)
         {
-            bool isContainer = true;
+            string containedType = "Object";
             if (parentTag != null) // add parent tag members
             {
                 if (tagContext.Closing) // closing tag, only show parent tag
                 {
-                    isContainer = false;
+                    containedType = null;
                     mix.Add(new HtmlTagItem(parentTag.Tag.Substring(parentTag.Tag.IndexOf(':') + 1), parentTag.Tag));
                 }
                 else
                 {
-                    string parentType = ResolveType(mxmlContext, parentTag.Tag);
+                    int nsSeparator = parentTag.Tag.IndexOf(':');
+                    string parentNs = nsSeparator > -1 ? parentTag.Tag.Substring(0, nsSeparator) : null;
+                    string parentName = nsSeparator > -1 ? parentTag.Tag.Substring(nsSeparator + 1) : parentTag.Tag;
+                    string parentType = ResolveType(mxmlContext, parentNs ?? "*", parentName);
                     ClassModel parentClass = context.ResolveType(parentType, mxmlContext.Model);
                     if (!parentClass.IsVoid())
                     {
                         parentClass.ResolveExtends();
-                        int nsSeparator = parentTag.Tag.IndexOf(':');
-                        isContainer = GetTagAttributes(parentClass, mix, excludes, nsSeparator > -1 ? 
-                            parentTag.Tag.Substring(0, nsSeparator) : null);
+                        containedType = GetTagAttributes(parentClass, mix, excludes, parentNs);
+                    }
+                    else
+                    {
+                        var gfTag = GetParentTag(parentTag.Start, false);;
+                        if (gfTag != null)
+                        {
+                            var gfType = ResolveType(mxmlContext, gfTag.Tag);
+                            var gfModel = context.ResolveType(gfType, mxmlContext.Model);
+                            if (gfModel.IsVoid()) return null;
+
+                            var result = ResolveAttribute(gfModel, parentName, false);
+                            if (result.ASResult == null) return null;
+                            if (result.ASResult.Member != null)
+                                return GetChildrenType(result.ASResult.Member, result.ASResult.InClass);
+                            else if (result.MetaTag != null)
+                            {
+                                // TODO: Add
+                                //GetAutoCompletionValuesFromMetaData(result.ASResult.InClass, )
+                            }
+                        }
                     }
                 }
             }
-            return isContainer;
+            return containedType;
+        }
+
+        static public string GetChildrenType(MemberModel member, ClassModel ownerClass)
+        {
+            string type;
+            if ((member.Flags & FlagType.Setter) > 0)
+            {
+                if (member.Parameters == null || member.Parameters.Count == 0)  // Wrong setter
+                    return null;
+
+                type = member.Parameters[0].Type;
+            }
+            else
+                type = member.Type;
+
+            string containedType = context.ResolveType(type, ownerClass.InFile).QualifiedName;
+            if (containedType == "mx.core.IDeferredInstance" && member.MetaDatas != null)
+            {
+                foreach (var memberMeta in member.MetaDatas)
+                {
+                    if (memberMeta.Name == "InstanceType")
+                    {
+                        containedType = memberMeta.Params["default"];
+                        break;
+                    }
+                }
+            }
+
+            if (containedType == "Array")
+            {
+                if (member.MetaDatas != null)
+                    foreach (var memberMeta in member.MetaDatas)
+                        if (memberMeta.Name == "ArrayElementType")
+                        {
+                            containedType = memberMeta.Params["default"];
+                            break;
+                        }
+
+                if (containedType == "Array") containedType = "Object";
+            }
+            else if (containedType.StartsWith("Vector.<"))
+            {
+                containedType = containedType.Substring(8, containedType.Length - 9);
+            }
+
+            return containedType;
         }
 
         static public bool HandleNamespace(object data)
@@ -372,11 +440,12 @@ namespace AS3Context
             List<ICompletionListItem> mix = new List<ICompletionListItem>();
             List<string> excludes = new List<string>();
 
-            bool isContainer = AddParentAttributes(mix, excludes); // current tag attributes
+            string containedType = AddParentAttributes(mix, excludes); // current tag attributes
 
-            if (isContainer && allTags.ContainsKey(ns)) // container children tags
+            if (containedType != null && allTags.ContainsKey(ns)) // container children tags
                 foreach (string tag in allTags[ns])
-                    mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                    if (containedType == "Object" || IsAssignableFrom(containedType, context.ResolveType(ResolveType(mxmlContext, ns, tag), mxmlContext.Model)))
+                        mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
 
             // cleanup and show list
             mix.Sort(new MXMLListItemComparer());
@@ -394,6 +463,38 @@ namespace AS3Context
             CompletionList.Show(items, true, tagContext.Name ?? "");
             CompletionList.MinWordLength = 0;
             return true;
+        }
+
+        static public bool IsAssignableFrom(ClassModel src, ClassModel dst)
+        {
+            return IsAssignableFrom(src.QualifiedName, dst);
+        }
+
+        static public bool IsAssignableFrom(string srcType, ClassModel dst)
+        {
+            dst.ResolveExtends();
+            do
+            {
+                if (dst.QualifiedName == srcType)
+                {
+                    return true;
+                }
+                
+                if (dst.Implements != null)
+                {
+                    foreach (var implement in dst.Implements)
+                    {
+                        if (IsAssignableFrom(srcType, context.ResolveType(implement, dst.InFile)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                dst = dst.Extends;
+            } while (!dst.IsVoid());
+
+            return false;
         }
 
         static public bool HandleElementClose(object data)
@@ -638,17 +739,17 @@ namespace AS3Context
             return true;
         }
 
-        private static bool GetTagAttributes(ClassModel tagClass, List<ICompletionListItem> mix, List<string> excludes, string ns)
+        private static string GetTagAttributes(ClassModel tagClass, List<ICompletionListItem> mix, List<string> excludes, string ns)
         {
             ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = tagClass;
             FlagType mask = FlagType.Variable | FlagType.Setter;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
-            bool isContainer = false;
+            string containedType = null;
 
             if (tmpClass.InFile.Package != "mx.builtin" && tmpClass.InFile.Package != "fx.builtin")
                 mix.Add(new HtmlAttributeItem("id", "String", null, ns));
-            else isContainer = true;
+            else containedType = "Object";
 
             if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
             {
@@ -666,11 +767,12 @@ namespace AS3Context
                     mix.Add(new HtmlAttributeItem("type", "Class", "http://ns.adobe.com/mxml/2009"));
             }
 
+            string defaultProperty = null;
             while (tmpClass != null && !tmpClass.IsVoid())
             {
                 string className = tmpClass.Name;
                 // look for containers
-                if (!isContainer)
+                if (containedType == null)
                 {
                     if (tmpClass.Implements != null
                         && (tmpClass.Implements.Contains("IContainer") // Flex
@@ -678,7 +780,33 @@ namespace AS3Context
                         || tmpClass.Implements.Contains("IFocusManagerContainer")
                         || tmpClass.Implements.Contains("IPopUpHost") // FlexJS
                         || tmpClass.Implements.Contains("IParent")))
-                        isContainer = true;
+                        containedType = "Object";
+                    else
+                    {
+                        if (defaultProperty == null)
+                        {
+                            if (tmpClass.MetaDatas != null)
+                                foreach (var meta in tmpClass.MetaDatas)
+                                    if (meta.Kind == ASMetaKind.DefaultProperty)
+                                    {
+                                        defaultProperty = meta.Params["default"];
+                                        break;
+                                    }
+                        }
+                        if (defaultProperty != null)
+                        {
+                            FlagType flags = FlagType.Setter | FlagType.Variable;
+                            foreach (var member in tmpClass.Members.Items)
+                                if (member.Name == defaultProperty && (member.Flags & flags) > 0)
+                                {
+                                    containedType = GetChildrenType(member, tmpClass);
+
+                                    break;
+                                }
+
+                            break;
+                        }
+                    }
                 }
 
                 foreach (MemberModel member in tmpClass.Members)
@@ -705,7 +833,7 @@ namespace AS3Context
                 acc = context.TypesAffinity(curClass, tmpClass);
             }
 
-            return isContainer;
+            return containedType;
         }
 
         private static List<ICompletionListItem> GetTagAttributeValues(ClassModel tagClass, string ns, string attribute)
@@ -1330,23 +1458,24 @@ namespace AS3Context
             return name;
         }
 
-        private static MxmlResult ResolveAttribute(ClassModel model, string word)
+        private static MxmlResult ResolveAttribute(ClassModel model, string word, bool recheck)
         {
             MxmlResult result = new MxmlResult();
             ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = model;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
+            FlagType flags = FlagType.Setter | FlagType.Variable;
             tmpClass.ResolveExtends();
 
             while (tmpClass != null && !tmpClass.IsVoid())
             {
                 foreach (MemberModel member in tmpClass.Members)
-                    if ((member.Flags & FlagType.Dynamic) > 0 && (member.Access & acc) > 0
+                    if ((member.Flags & flags) > 0 && (member.Access & acc) > 0
                         && member.Name == word)
                     {
                         var asResult = new ASResult();
                         asResult.InFile = tmpClass.InFile;
-                        if (member.LineFrom == 0) // cached model, reparse
+                        if (member.LineFrom == 0 && recheck) // cached model, reparse
                         {
                             asResult.InFile.OutOfDate = true;
                             asResult.InFile.Check();
@@ -1356,7 +1485,11 @@ namespace AS3Context
                                 asResult.Member = asResult.InClass.Members.Search(member.Name, member.Flags, 0);
                             }
                         }
-                        else asResult.Member = member;
+                        else
+                        {
+                            asResult.Member = member;
+                            asResult.InClass = tmpClass;
+                        }
                         result.ASResult = asResult;
                         return result;
                     }
@@ -1370,7 +1503,7 @@ namespace AS3Context
                             name == word)
                         {
                             var asResult = new ASResult { InFile = tmpClass.InFile };
-                            if (meta.LineFrom == 0) // cached model, reparse
+                            if (meta.LineFrom == 0 && recheck) // cached model, reparse
                             {
                                 asResult.InFile.OutOfDate = true;
                                 asResult.InFile.Check();
