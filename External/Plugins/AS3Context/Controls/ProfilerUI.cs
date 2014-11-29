@@ -342,7 +342,7 @@ namespace AS3Context.Controls
 
         private string AddDefaultProfiler()
         {
-            string swfPath = ResolvePath(CheckResource("Profiler5.swf", "Profiler.swf"));
+            string swfPath = ResolvePath(Utils.ResourceUtils.CheckResource("Profiler.swf", "Profiler5.swf"));
             ASCompletion.Commands.CreateTrustFile.Run("FDProfiler.cfg", Path.GetDirectoryName(swfPath));
             FlashConnect.Settings settings = GetFlashConnectSettings();
             return "\r\nPreloadSwf=" + swfPath + "?host=" + settings.Host + "&port=" + settings.Port + "\r\n";
@@ -368,32 +368,6 @@ namespace AS3Context.Controls
         {
             IPlugin flashConnect = PluginBase.MainForm.FindPlugin("425ae753-fdc2-4fdf-8277-c47c39c2e26b");
             return flashConnect != null ? (FlashConnect.Settings)flashConnect.Settings : new FlashConnect.Settings();
-        }
-
-        static private string CheckResource(string fileName, string resName)
-        {
-            string path = Path.Combine(PathHelper.DataDir, "AS3Context");
-            string fullPath = Path.Combine(path, fileName);
-            if (!File.Exists(fullPath))
-            {
-                string id = "AS3Context.Resources." + resName;
-                System.Reflection.Assembly assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                using (BinaryReader br = new BinaryReader(assembly.GetManifestResourceStream(id)))
-                {
-                    using (FileStream bw = File.Create(fullPath))
-                    {
-                        byte[] buffer = br.ReadBytes(1024);
-                        while (buffer.Length > 0)
-                        {
-                            bw.Write(buffer, 0, buffer.Length);
-                            buffer = br.ReadBytes(1024);
-                        }
-                        bw.Close();
-                    }
-                    br.Close();
-                }
-            }
-            return fullPath;
         }
 
         private void CreateDefaultCfg(string mmCfg)

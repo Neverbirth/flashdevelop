@@ -56,32 +56,6 @@ namespace AS3Context.Compiler
         static private bool isFlex4SDK;
         static private string currentSDK;
 		
-		static private string CheckResource(string resName, string fileName)
-		{
-            string path = Path.Combine(PathHelper.DataDir, "AS3Context");
-            string fullPath = Path.Combine(path, fileName);
-            if (!File.Exists(fullPath))
-			{
-                string id = "AS3Context.Resources." + resName;
-				System.Reflection.Assembly assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                using (BinaryReader br = new BinaryReader(assembly.GetManifestResourceStream(id)))
-                {
-                    using (FileStream bw = File.Create(fullPath))
-                    {
-                        byte[] buffer = br.ReadBytes(1024);
-                        while (buffer.Length > 0)
-                        {
-                            bw.Write(buffer, 0, buffer.Length);
-                            buffer = br.ReadBytes(1024);
-                        }
-                        bw.Close();
-                    }
-                    br.Close();
-                }
-			}
-            return fullPath;
-		}
-
         static public FlexShells Instance 
 		{
 			get {
@@ -153,7 +127,7 @@ namespace AS3Context.Compiler
                 return;
             }
 
-            flexShellsPath = CheckResource("FlexShells.jar", flexShellsJar);
+            flexShellsPath = Utils.ResourceUtils.CheckResource("FlexShells.jar", flexShellsJar);
             if (!File.Exists(flexShellsPath))
             {
                 if (src != null) return; // silent checking
@@ -217,7 +191,7 @@ namespace AS3Context.Compiler
 				return;
 			}
 
-            flexShellsPath = CheckResource("FlexShells.jar", flexShellsJar);
+            flexShellsPath = Utils.ResourceUtils.CheckResource("FlexShells.jar", flexShellsJar);
             if (!File.Exists(flexShellsPath))
             {
                 ErrorManager.ShowInfo(TextHelper.GetString("Info.ResourceError"));

@@ -24,6 +24,8 @@ namespace ASCompletion.Completion
 {
     public delegate void ResolvedContextChangeHandler(ResolvedContext resolved);
 
+    public delegate void MetaCompletionHandler(ASExpr expression);
+
 	/// <summary>
 	/// Description of ASComplete.
 	/// </summary>
@@ -56,6 +58,9 @@ namespace ASCompletion.Completion
 
         static private Braces[] AddClosingBracesData = new Braces[] { 
             new Braces('(', ')'), new Braces('[', ']'), new Braces('{', '}'), new Braces('"', '"'), new Braces('\'', '\'') };
+
+        public static MetaCompletionHandler HandleMetaCompletionCallback;
+
         #endregion
 
         #region application_event_handlers
@@ -213,6 +218,15 @@ namespace ASCompletion.Completion
                         break;
 
                     default:
+                        if (Value == features.meta)
+                        {
+                            var expr = GetExpression(Sci, position, false);
+                            if (expr.Separator == ']')
+                            {
+                                HandleDotCompletion(Sci, false);
+                                break;
+                            }
+                        }
                         AutoStartCompletion(Sci, position);
                         break;
 				}
@@ -1653,10 +1667,9 @@ namespace ASCompletion.Completion
             List<ASMetaData> events = new List<ASMetaData>();
             while (ofClass != null && !ofClass.IsVoid())
             {
-                FileModel inFile = ofClass.InFile;
-                if (inFile.MetaDatas != null)
+                if (ofClass.MetaDatas != null)
                 {
-                    foreach (ASMetaData meta in inFile.MetaDatas)
+                    foreach (ASMetaData meta in ofClass.MetaDatas)
                         if (meta.Kind == ASMetaKind.Event) events.Add(meta);
                 }
                 ofClass = ofClass.Extends;
@@ -1789,6 +1802,13 @@ namespace ASCompletion.Completion
                     && HandleColonCompletion(Sci, expr.Value, autoHide))
                     return true;
 
+                if (expr.Separator == ']' || expr.coma == ComaExpression.MetaDataParameter)
+                {
+                    if (HandleMetaCompletionCallback != null) HandleMetaCompletionCallback(expr);
+
+                    return true;
+                }
+
                 // no completion
                 if ((expr.BeforeBody && expr.Separator != '=')
                     || expr.coma == ComaExpression.AnonymousObject
@@ -1830,7 +1850,6 @@ namespace ASCompletion.Completion
             }
 
             string tail = (dotIndex >= 0) ? expr.Value.Substring(dotIndex + features.dot.Length) : expr.Value;
-            
             // custom completion
             MemberList items = ASContext.Context.ResolveDotContext(Sci, expr, autoHide);
             if (items != null)
@@ -3206,6 +3225,8 @@ namespace ASCompletion.Completion
             int dotCount = 0;
             bool inRegex = false;
             char dot = features.dot[features.dot.Length-1];
+            char[] lineContinuators = {',', dot, '=', '+', '-', '|', '&', '*', '/'};
+            int meta = features.meta;
             while (position > minPos)
             {
                 position--;
@@ -3226,6 +3247,40 @@ namespace ASCompletion.Completion
                         if (expression.SubExpressions == null) expression.SubExpressions = new List<string>();
                         expression.SubExpressions.Add("");
                         sb.Insert(0, "RegExp.#" + (subCount++) + "~");
+                    }
+                    if (meta > -1 && c == meta)
+                    {
+                        bool possibleMeta = false;
+                        if (expression.ContextMember == null)
+                        {
+                            // We don't want to autocomplete if we're continuing some line
+                            for (int j = position - 1; j >= minPos; j--)
+                            {
+                                char d = (char)Sci.CharAt(j);
+                                if (!char.IsWhiteSpace(d))
+                                {
+                                    if (Array.IndexOf(lineContinuators, d) > -1)
+                                    {
+                                        var charStyle = Sci.StyleAt(j) & stylemask;
+                                        //TODO: We're assuming that if d is inside a comment we can complete metadata, but we should go further back to be really sure
+                                        possibleMeta = IsCommentStyle(charStyle);
+                                    } else possibleMeta = true;
+                                    break;
+                                }
+                            }
+                        } 
+                        else if (expression.BeforeBody)
+                        {
+                            // Check we're at the start of the declaration and outside a function, we don't have function params or return types meta
+                            int line = expression.ContextMember.LineFrom;
+                            possibleMeta = position <= Sci.PositionFromLine(line) + Sci.GetLineIndentation(line);
+                        }
+
+                        if (possibleMeta)
+                        {
+                            expression.Separator = sqCount == 0 ? ']' : ';';
+                            break;
+                        }
                     }
                     // array access
                     if (c == '[')
@@ -3294,7 +3349,12 @@ namespace ASCompletion.Completion
                                 expression.Separator = ',';
                                 expression.coma = ComaExpression.FunctionDeclaration;
                             }
-                            else expression.WordBefore = testWord;
+                            else
+                            {
+                                if (testWord2 == string.Empty && features.meta > -1 && Sci.CharAt(testPos) == meta)
+                                    expression.coma = ComaExpression.MetaDataParameter;
+                                expression.WordBefore = testWord;
+                            }
                             break;
                         }
                     }
@@ -3486,6 +3546,8 @@ namespace ASCompletion.Completion
                             return ComaExpression.FunctionDeclaration; // function declaration
                         if (features.hasDelegates && word2 == "delegate")
                             return ComaExpression.FunctionDeclaration; // delegate declaration
+                        if (word2 == string.Empty && features.meta > -1 && features.meta == Sci.CharAt(position))
+                            return ComaExpression.MetaDataParameter;
                         return ComaExpression.FunctionParameter; // function call
                     }
                 }
@@ -4280,7 +4342,7 @@ namespace ASCompletion.Completion
     }
 
     /// <summary>
-    /// Declaration completion list item
+    /// Event type completion list item
     /// </summary>
     public class EventItem : ICompletionListItem
     {
@@ -4342,7 +4404,8 @@ namespace ASCompletion.Completion
         FunctionDeclaration,
         FunctionParameter,
         ArrayValue,
-        GenericIndexType
+        GenericIndexType,
+        MetaDataParameter
     }
 
 	/// <summary>

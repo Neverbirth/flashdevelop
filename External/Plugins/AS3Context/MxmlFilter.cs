@@ -4,34 +4,103 @@ using System.Text;
 using ASCompletion.Model;
 using System.IO;
 using System.Text.RegularExpressions;
-using ASCompletion.Context;
 using System.Xml;
-using ProjectManager.Projects.AS3;
-using PluginCore;
-using PluginCore.Helpers;
 
 namespace AS3Context
 {
-    class MxmlFilterContext
+    class MxmlContextBase
     {
-        public List<InlineRange> as3ranges = new List<InlineRange>();
-        public MemberList mxmlMembers = new MemberList();
-        public string baseTag = "";
-        public Dictionary<string, string> namespaces = new Dictionary<string,string>();
-        public List<MxmlCatalog> catalogs = new List<MxmlCatalog>();
-        public FileModel model;
+        public MemberList MxmlMembers = new MemberList();
+        public string BaseTag = string.Empty;
+        public List<string> States;
+        public List<MxmlInlineRange> Outline = new List<MxmlInlineRange>();
+        public List<InlineRange> As3Ranges = new List<InlineRange>();
+    }
+
+    class MxmlFilterContext : MxmlContextBase
+    {
+        public enum FlexDocumentType
+        {
+            Unknown, Flex3, Flex4, FlexJs
+        }
+
+        public Dictionary<string, string> Namespaces = new Dictionary<string, string>();
+        public List<MxmlCatalog> Catalogs = new List<MxmlCatalog>();
+        public List<MxmlContextBase> Components;
+        public FileModel Model;
+
+        private FlexDocumentType? _documentType;
+        public FlexDocumentType DocumentType
+        {
+            get
+            {
+                if (_documentType == null)
+                {
+                    _documentType = FlexDocumentType.Unknown;
+                    if (Namespaces != null)
+                    {
+                        string nsUri;
+                        // Should we compare against the root tag namespace instead? some checks indicate this is the way of doing it
+                        if (Namespaces.TryGetValue("basic", out nsUri) && nsUri == "library://ns.apache.org/flexjs/basic")
+                            _documentType = FlexDocumentType.FlexJs;
+                        else if (Namespaces.TryGetValue("fx", out nsUri) && nsUri == "http://ns.adobe.com/mxml/2009")
+                            _documentType = FlexDocumentType.Flex4;
+                        else if (Namespaces.TryGetValue("mx", out nsUri) && (nsUri == MxmlFilter.OLD_MX || nsUri == MxmlFilter.BETA_MX))
+                            _documentType = FlexDocumentType.Flex3;
+                    }
+                }
+
+                return _documentType.Value;
+            }
+        }
+
+        public MxmlContextBase GetComponentContext(int pos)
+        {
+            MxmlContextBase ctx = this;
+            if (Components != null)
+            {
+                foreach (var component in Components)
+                {
+                    var cOutline = component.Outline[0];
+                    if (cOutline.Start <= pos && cOutline.End >= pos)
+                    {
+                        ctx = component;
+                        break;
+                    }
+                    if (cOutline.Start > pos) break;
+                }
+            }
+
+            return ctx;
+        }
+
+    }
+
+    class MxmlInlineRange : InlineRange
+    {
+        public string Tag;
+        public int LineFrom;
+        public int LineTo;
+        public int Level;
+        public MemberModel Model;
+
+        public MxmlInlineRange(string syntax, int start, int end)
+            : base(syntax, start, end)
+        { }
     }
 
     #region MXML Filter
     class MxmlFilter
     {
-        static private readonly Regex tagName = new Regex("<(?<name>[a-z][a-z0-9_:]*)[\\s>]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static private readonly Regex tagName = new Regex("<(?<name>/?[a-z][a-z0-9_:]*)[\\s>]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static public string OLD_MX = "http://www.adobe.com/2006/mxml";
         static public string BETA_MX = "library://ns.adobe.com/flex/halo";
         static public string NEW_MX = "library://ns.adobe.com/flex/mx";
 
         static private List<MxmlCatalog> catalogs = new List<MxmlCatalog>();
         static private Dictionary<string, MxmlCatalogs> archive = new Dictionary<string, MxmlCatalogs>();
+        //TODO: Change to a HashSet with .NET 3.5
+        static private List<string> namespaces = new List<string>();
 
         /// <summary>
         /// Reset catalogs for new classpath definition
@@ -39,37 +108,7 @@ namespace AS3Context
         static public void ClearCatalogs()
         {
             catalogs.Clear();
-        }
-
-        /// <summary>
-        /// Look in current project configuration for user-defined namespaces
-        /// </summary>
-        static public void AddProjectManifests()
-        {
-            AS3Project project = PluginBase.CurrentProject as AS3Project;
-            if (project != null)
-            {
-                //-compiler.namespaces.namespace http://e4xu.googlecode.com run\manifest.xml
-                if (project.CompilerOptions.Additional != null)
-                    foreach (string line in project.CompilerOptions.Additional)
-                    {
-                        string temp = line.Trim();
-                        if (temp.StartsWith("-compiler.namespaces.namespace") || temp.StartsWith("-namespace"))
-                        {
-                            int p = temp.IndexOf(' ');
-                            if (p < 0) p = temp.IndexOf('=');
-                            if (p < 0) continue;
-                            temp = temp.Substring(p + 1).Trim();
-                            p = temp.IndexOf(' ');
-                            if (p < 0) p = temp.IndexOf(',');
-                            if (p < 0) continue;
-                            string uri = temp.Substring(0, p);
-                            string path = temp.Substring(p + 1).Trim();
-                            if (path.StartsWith("\"")) path = path.Substring(1, path.Length - 2);
-                            AddManifest(uri, PathHelper.ResolvePath(path, project.Directory));
-                        }
-                    }
-            }
+            namespaces.Clear();
         }
 
         /// <summary>
@@ -132,6 +171,12 @@ namespace AS3Context
             {
                 FileInfo info = new FileInfo(file);
                 MxmlCatalogs cat;
+                //TODO: Improve with .NET 3.5
+                if (!string.IsNullOrEmpty(uri) && namespaces.BinarySearch(uri) < 0)
+                {
+                    namespaces.Add(uri);
+                    namespaces.Sort();
+                }
                 if (archive.ContainsKey(file))
                 {
                     cat = archive[file];
@@ -154,6 +199,11 @@ namespace AS3Context
             catch (Exception) { }
         }
 
+        static public List<string> GetNamespaces()
+        {
+            return namespaces;
+        }
+
         /// <summary>
         /// Called if a FileModel needs filtering
         /// - define inline AS3 ranges
@@ -162,30 +212,35 @@ namespace AS3Context
         /// <returns></returns>
         static public string FilterSource(string name, string src, MxmlFilterContext ctx)
         {
-            List<InlineRange> as3ranges = ctx.as3ranges;
-            MemberList mxmlMembers = ctx.mxmlMembers;
+            List<InlineRange> as3ranges = ctx.As3Ranges;
+            List<MxmlInlineRange> outline = ctx.Outline;
+            MemberList mxmlMembers = ctx.MxmlMembers;
 
-            StringBuilder sb = new StringBuilder();
-            sb.Append("package{");
+            StringBuilder sb = new StringBuilder("package{");
             int len = src.Length - 8;
-            int rangeStart = -1;
-            int nodeStart = -1;
-            int nodeEnd = -1;
             int line = 0;
             bool firstNode = true;
-            bool skip = true;
-            bool hadNL = false;
+            bool inXml = true;
+            bool inCdata = false;
             bool inComment = false;
+            InlineRange inlineRange = null;
+            string fxTag = null;
+            var tagStack = new Stack<MxmlInlineRange>();
+            var componentScripts = new List<StringBuilder>();
+            MxmlContextBase componentContext = null;
+            StringBuilder componentScript = null;
+            int anonNo = 0;
             for (int i = 0; i < len; i++)
             {
                 char c = src[i];
+            xmlStart:
                 // keep newlines
                 if (c == 10 || c == 13)
                 {
                     if (c == 13) line++;
                     else if (i > 0 && src[i - 1] != 13) line++;
                     sb.Append(c);
-                    hadNL = true;
+                    if (componentScript != null) componentScript.Append(c);
                 }
                 // XML comment
                 else if (inComment)
@@ -193,14 +248,14 @@ namespace AS3Context
                     if (i < len - 3 && c == '-' && src[i + 1] == '-' && src[i + 2] == '>')
                     {
                         inComment = false;
-                        i += 3;
+                        i += 2;
                     }
                     continue;
                 }
                 // in XML
-                else if (skip)
+                else if (inXml)
                 {
-                    if (c == '<' && i < len-3)
+                    if (c == '<' && i < len)
                     {
                         if (src[i + 1] == '!')
                         {
@@ -210,32 +265,177 @@ namespace AS3Context
                                 i += 3;
                                 continue;
                             }
-                            else if (src[i + 2] == '[' && src.Substring(i + 2, 7) == "[CDATA[")
-                            {
-                                i += 8;
-                                skip = false;
-                                hadNL = false;
-                                rangeStart = i;
-                                continue;
-                            }
                         }
                         else
                         {
-                            nodeStart = i + 1;
-                            nodeEnd = -1;
-
                             if (firstNode && src[i + 1] != '?')
                             {
-                                int space = src.IndexOfAny(new char[] { ' ', '\n' }, i);
+                                int space = src.IndexOfAny(new char[] { ' ', '\t', '\n' }, i);
                                 string tag = GetXMLContextTag(src, space);
                                 if (tag != null && space > 0)
                                 {
                                     firstNode = false;
-                                    ctx.baseTag = tag;
+                                    ctx.BaseTag = tag;
+                                    var mxmlTag = new MxmlInlineRange("xml", i, -1)
+                                    {
+                                        LineFrom = line,
+                                        LineTo = -1,
+                                        Tag = tag,
+                                        Level = tagStack.Count
+                                    };
+                                    outline.Add(mxmlTag);
+                                    tagStack.Push(mxmlTag);
                                     ReadNamespaces(ctx, src, space);
+
+                                    // TODO: Namespace may not be mx and fx
+                                    fxTag = ctx.DocumentType == MxmlFilterContext.FlexDocumentType.Flex3 ? "mx:" : "fx:";
                                     string type = MxmlComplete.ResolveType(ctx, tag);
                                     sb.Append("public class ").Append(name)
                                         .Append(" extends ").Append(type).Append('{');
+                                }
+                            }
+                            else if (!firstNode)
+                            {
+                                int space = src.IndexOfAny(new char[] { ' ', '\t', '\n', '>' }, i);
+                                if (src[space - 1] == '/') space--;
+                                string tag = GetXMLContextTag(src, space);
+                                if (tag != null && space > 0)
+                                {
+                                    int tagStart = i;
+                                    if (src[space] == '\n')
+                                    {
+                                        if (src[space - 1] == '\r')
+                                        {
+                                            sb.Append('\r');
+                                        }
+                                        line++;
+                                        sb.Append('\n');
+                                    }
+                                    i = space;
+                                    if (tag.StartsWith("/"))
+                                    {
+                                        if (inlineRange != null)
+                                        {
+                                            inlineRange.End = tagStart - 1;
+                                            as3ranges.Add(inlineRange);
+                                            inlineRange = null;
+                                        }
+
+                                        if (tag == "/" + fxTag + "Component" && componentScript != null)
+                                        {
+                                            if (componentContext != null)
+                                            {
+                                                componentScript.Append("}");
+                                                componentScripts.Add(componentScript);
+                                                componentContext.Outline.Add(tagStack.Peek());
+                                                componentContext = null;
+                                            }
+                                            componentScript = null;
+                                        }
+
+                                        if (tagStack.Count == 0 || tag != "/" + tagStack.Peek().Tag) // Unbalanced or malformed
+                                        {
+                                            // Display warning to the user through the output panel or our own (m)xml outline panel?
+                                        }
+                                        else
+                                        {
+                                            var cMxmlTag = tagStack.Pop();
+                                            cMxmlTag.End = i;
+                                            cMxmlTag.LineTo = line;
+                                        }
+                                        continue;
+                                    }
+
+                                    switch (tag)
+                                    {
+                                        case "mx:State":
+                                        case "s:State":
+                                            var mxCtx = componentContext ?? ctx;
+                                            var nameSpace = string.Empty;
+                                            var nameSpaceIndex = mxCtx.BaseTag.IndexOf(':');
+                                            if (nameSpaceIndex > -1)
+                                                nameSpace = mxCtx.BaseTag.Substring(0, nameSpaceIndex + 1);
+                                            if ((tagStack.Count == 2 || componentContext != null) && tagStack.Peek().Tag == nameSpace + "states")
+                                                ReadStateTag(mxCtx, src, ref i);
+                                            break;
+                                        default:
+                                            if (tag == fxTag + "Script" || tag == fxTag + "Style" || tag == fxTag + "Metadata")
+                                            {
+                                                if (tagStack.Count == 1 || (tagStack.Count >= 4 && componentScript != null))
+                                                {
+                                                    string attributeName;
+                                                    bool fromSource = false;
+                                                    do
+                                                    {
+                                                        attributeName = GetAttributeName(src, ref i);
+                                                        if (attributeName == "source") fromSource = true;
+                                                    } while (attributeName != null);
+                                                    i--;
+                                                    if (!fromSource && src[i] != '/' && src[i + 1] != '>')
+                                                    {
+                                                        inlineRange = new InlineRange(tag.EndsWith("e") ? "css" : "as3", -1, -1);
+                                                    }
+                                                }
+                                            } 
+                                            else if (tag == fxTag + "Component")
+                                            {
+                                                if (tagStack.Count >= 2)
+                                                {
+                                                    string attributeName, className = null;
+                                                    do
+                                                    {
+                                                        attributeName = GetAttributeName(src, ref i);
+                                                        if (attributeName == "className")
+                                                            className = GetAttributeValue(src, ref i);
+                                                    } while (attributeName != null);
+                                                    i--;
+                                                    if (src[i] != '/' && src[i + 1] != '>')
+                                                    {
+                                                        if (className != null)
+                                                            componentScript = new StringBuilder().AppendLine().Append("class ")
+                                                                .Append(className);
+                                                        else
+                                                            componentScript = new StringBuilder().AppendLine()/*.Append("[ExcludeClass]")*/
+                                                                .AppendLine().Append("class $Anon_" + anonNo++);  // Discuss about ExcludeClass...
+                                                    }
+                                                }
+                                            }
+                                            else if (componentScript != null && componentContext == null)
+                                            {
+                                                if (ctx.Components == null) ctx.Components = new List<MxmlContextBase>();
+                                                componentContext = new MxmlContextBase {BaseTag = tag};
+                                                ctx.Components.Add(componentContext);
+                                                string type = MxmlComplete.ResolveType(ctx, tag);
+                                                // Better to use a topLevel Element? opinions? it will be more work for both the developer and the machine
+                                                componentScript.Append(" extends ").Append(type)
+                                                    .Append("{private var outerDocument:")
+                                                    .Append(name).Append(";");
+                                            }
+                                            break;
+                                    }
+
+                                    var oMxmlTag = new MxmlInlineRange("xml", tagStart, -1)
+                                    {
+                                        LineFrom = line,
+                                        LineTo = -1,
+                                        Tag = tag,
+                                        Level = tagStack.Count
+                                    };
+                                    outline.Add(oMxmlTag);
+
+                                    if (src[i] == '/' && src[i + 1] == '>')
+                                    {
+                                        i++;
+                                        oMxmlTag.End = i;
+                                        oMxmlTag.LineTo = line;
+                                        continue;
+                                    }
+                                    else if (src[i] == '>')
+                                    {
+                                        inXml = false;
+                                        if (inlineRange != null) inlineRange.Start = i + 1;
+                                    }
+                                    tagStack.Push(oMxmlTag);
                                 }
                             }
                         }
@@ -243,48 +443,116 @@ namespace AS3Context
                     else if (c == '=' && i > 4) // <node id="..."
                     {
                         int off = i - 1;
-                        while (src[off] == ' ' && off > 4) off--;
-                        if (src[off - 2] <= 32 && src[off - 1] == 'i' && src[off] == 'd')
+                        while (char.IsWhiteSpace(src[off]) && off > 4) off--;
+                        if (src[off - 2] <= 32 && src[off - 1] == 'i' && src[off] == 'd' && tagStack.Count > 0)
                         {
-                            string tag = GetXMLContextTag(src, i);
-                            if (tag != null)
+                            string tag = tagStack.Peek().Tag;
+                            string id = GetAttributeValue(src, ref i);
+                            if (!string.IsNullOrEmpty(id))
                             {
-                                string id = GetAttributeValue(src, ref i);
-                                if (id != null)
+                                MemberModel member = new MemberModel(id, tag, FlagType.Variable | FlagType.Dynamic, Visibility.Public);
+                                member.LineTo = member.LineFrom = line;
+                                string type = MxmlComplete.ResolveType(ctx, tag);
+                                var members = componentContext == null ? mxmlMembers : componentContext.MxmlMembers;
+                                var builder = componentScript ?? sb;
+                                members.Add(member);
+                                builder.Append("public var ").Append(id)
+                                    .Append(':').Append(type).Append(';');
+
+                                tagStack.Peek().Model = member;
+                            }
+
+                            c = src[i];
+                            // We could copy & paste the following conditions, but I'm 100% against repeating code
+                            if ((c == '/' && src[i + 1] == '>') || c == '>') i--;
+                        }
+                    }
+                    else if (c == '/' && src[i + 1] == '>')
+                    {
+                        i++;
+                        if (tagStack.Count > 0)
+                        {
+                            var mxmlTag = tagStack.Pop();
+                            mxmlTag.LineTo = line;
+                            mxmlTag.End = i;
+                        }
+                    }
+                    else if (c == '>')
+                    {
+                        inXml = false;
+                        if (inlineRange != null) inlineRange.Start = i + 1;
+                    }
+                }
+                // in element value
+                else
+                {
+                    if (c == '<')
+                    {
+                        if (!inCdata)
+                        {
+                            if (i < len && src[i + 1] == '!' && src[i + 2] == '[' && src.Substring(i + 2, 7) == "[CDATA[")
+                            {
+                                i += 8;
+                                inCdata = true;
+                                if (inlineRange != null)
                                 {
-                                    MemberModel member = new MemberModel(id, tag, FlagType.Variable | FlagType.Dynamic, Visibility.Public);
-                                    member.LineTo = member.LineFrom = line;
-                                    string type = MxmlComplete.ResolveType(ctx, tag);
-                                    mxmlMembers.Add(member);
-                                    sb.Append("public var ").Append(id)
-                                        .Append(':').Append(type).Append(';');
+                                    inlineRange.End = i - 8;
+                                    as3ranges.Add(inlineRange);
+                                    inlineRange = new InlineRange(inlineRange.Syntax, i + 1, -1);
                                 }
+                            }
+                            else
+                            {
+                                inXml = true;
+                                if (inlineRange != null)
+                                {
+                                    inlineRange.End = i;
+                                    as3ranges.Add(inlineRange);
+                                    inlineRange = null;
+                                }
+                                /* I have mixed feelings about this, we could either add some extra flag and/or clutter code some more, or make i--
+                                 * Decided to save some cycles and checks doing this. Large mxml files may thank it.
+                                   xmlStart should be below else if (inXml), but variable scope won't allow for it... */
+                                goto xmlStart;
                             }
                         }
                     }
-                    else if (nodeEnd < 0)
+                    else if (c == ']' && inCdata && src[i + 1] == ']' && src[i + 2] == '>')
                     {
-                        if (nodeStart >= 0 && (c == ' ' || c == '>'))
+                        inCdata = false;
+                        if (inlineRange != null)
                         {
-                            nodeEnd = i;
+                            inlineRange.End = i;
+                            as3ranges.Add(inlineRange);
+                            inlineRange = new InlineRange(inlineRange.Syntax, i + 3, -1);
+                        }
+                        i += 2;
+                    }
+                    else
+                    {
+                        if (inlineRange != null && inlineRange.Syntax == "as3")
+                        {
+                            if (componentScript == null) sb.Append(c);
+                            else componentScript.Append(c);
                         }
                     }
                 }
-                // in script
-                else
-                {
-                    if (c == ']' && src[i] == ']' && src[i + 1] == '>')
-                    {
-                        skip = true;
-                        if (hadNL) as3ranges.Add(new InlineRange("as3", rangeStart, i));
-                        rangeStart = -1;
-                    }
-                    else sb.Append(c);
-                }
             }
-            if (rangeStart >= 0 && hadNL)
-                as3ranges.Add(new InlineRange("as3", rangeStart, src.Length));
+            if (inlineRange != null)
+            {
+                inlineRange.End = src.Length;
+                as3ranges.Add(inlineRange);
+            }
             sb.Append("}}");
+
+            if (componentScript != null) componentScripts.Add(componentScript);
+
+            if (componentScripts.Count > 0)
+            {
+                foreach (var script in componentScripts)
+                    sb.AppendLine().Append(script.ToString());
+            }
+
             return sb.ToString();
         }
 
@@ -301,45 +569,75 @@ namespace AS3Context
                 if (name.StartsWith("xmlns"))
                 {
                     string[] qname = name.Split(':');
-                    if (qname.Length == 1) ctx.namespaces["*"] = value;
-                    else ctx.namespaces[qname[1]] = value;
+                    if (qname.Length == 1) ctx.Namespaces["*"] = value;
+                    else ctx.Namespaces[qname[1]] = value;
                 }
             }
             // find catalogs
-            foreach (string ns in ctx.namespaces.Keys)
+            foreach (string ns in ctx.Namespaces.Keys)
             {
-                string uri = ctx.namespaces[ns];
-                if (uri == OLD_MX || uri == BETA_MX) uri = NEW_MX;
+                string uri = ctx.Namespaces[ns];
+                if (uri == BETA_MX) uri = OLD_MX;
                 foreach (MxmlCatalog cat in catalogs)
                     if (cat.URI == uri)
                     {
                         cat.NS = ns;
-                        ctx.catalogs.Add(cat);
+                        ctx.Catalogs.Add(cat);
                     }
             }
+        }
+
+        private static void ReadStateTag(MxmlContextBase ctx, string src, ref int i)
+        {
+            string attrName;
+            do
+            {
+                attrName = GetAttributeName(src, ref i);
+                if (attrName == "name")
+                {
+                    string value = GetAttributeValue(src, ref i);
+                    if (value == null) continue;
+
+                    if (ctx.States == null) ctx.States = new List<string>();
+                    if (!ctx.States.Contains(value)) ctx.States.Add(value);
+                }
+                else if (attrName == "stateGroups")
+                {
+                    string value = GetAttributeValue(src, ref i);
+                    if (value == null) continue;
+
+                    foreach (var stateGroup in value.Split(','))
+                    {
+                        var groupName = stateGroup.Trim();
+                        if (ctx.States == null) ctx.States = new List<string>();
+                        if (!ctx.States.Contains(value)) ctx.States.Add(groupName);
+                    }
+                }
+            } while (attrName != null);
+            i--;
         }
 
         /// <summary>
         /// Get the attribute name
         /// </summary>
-        private static string GetAttributeName(string src, ref int i)
+        internal static string GetAttributeName(string src, ref int i)
         {
-            string name = "";
+            var name = new StringBuilder();
             char c;
-            int oldPos = 0;
+            int oldPos = i;
             int len = src.Length;
             bool skip = true;
             while (i < len)
             {
                 c = src[i++];
-                if (c == '>') return null;
+                if (c == '\'' || c == '"' || c == '<' || c == '>' || c == '&' || c == '/') return null;
                 if (skip && c > 32) skip = false;
                 if (c == '=')
                 {
-                    if (!skip) return name;
-                    else break;
+                    if (!skip) return name.ToString();
+                    break;
                 }
-                else if (!skip && c > 32) name += c;
+                if (!skip && c > 32) name.Append(c);
             }
             i = oldPos;
             return null;
@@ -348,26 +646,91 @@ namespace AS3Context
         /// <summary>
         /// Get the attribute value
         /// </summary>
-        private static string GetAttributeValue(string src, ref int i)
+        internal static string GetAttributeValue(string src, ref int i)
         {
-            string value = "";
+            var value = new StringBuilder();
             char c;
             int oldPos = i;
             int len = src.Length;
             bool skip = true;
+            char boundsChar = '\0';
             while (i < len)
             {
                 c = src[i++];
                 if (c == 10 || c == 13) break;
-                if (c == '"')
+                if (skip)
                 {
-                    if (!skip) return value;
-                    else skip = false;
+                    if (c == '"' || c == '\'')
+                    {
+                        skip = false;
+                        boundsChar = c;
+                    }
                 }
-                else if (!skip) value += c;
+                else
+                {
+                    if (c == boundsChar) return value.ToString();
+                    value.Append(c);
+                }
             }
             i = oldPos;
             return null;
+        }
+
+        /// <summary>
+        /// Get the current attribute name, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeName(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            bool startFound = false;
+            while (pos >= 1)
+            {
+                char c = (char)sci.CharAt(pos);
+                if (!startFound)
+                {
+                    if (sci.BaseStyleAt(pos - 1) == MxmlComplete.AttributeStyle) startFound = true;
+                }
+                else
+                {
+                    if (char.IsWhiteSpace(c)) break;
+                    builder.Insert(0, (char)sci.CharAt(pos));
+                }
+                pos--;
+            }
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Get the current attribute value, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeValue(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            while (pos >= 1)
+            {
+                if (sci.BaseStyleAt(pos - 1) != MxmlComplete.AttributeValueStyle) break;
+                builder.Insert(0, (char)sci.CharAt(pos));
+                pos--;
+            }
+            if (builder.Length > 0) builder = builder.Remove(builder.Length - 1, 1);
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Get the current attribute value before base style has been fully applied, assuming you're placed next to it 
+        /// </summary>
+        internal static string GetCurrentAttributeValueEx(ScintillaNet.ScintillaControl sci, ref int pos)
+        {
+            var builder = new StringBuilder();
+            while (pos >= 1)
+            {
+                if (sci.BaseStyleAt(pos) != MxmlComplete.BlankStyle) break;
+                builder.Insert(0, (char)sci.CharAt(pos));
+                pos--;
+            }
+
+            return builder.ToString();
         }
 
         /// <summary>
@@ -391,7 +754,7 @@ namespace AS3Context
             string tag = sb.ToString();
             Match mTag = tagName.Match(tag + " ");
             if (mTag.Success) return mTag.Groups["name"].Value;
-            else return null;
+            return null;
         }
 
         /// <summary>
@@ -402,31 +765,30 @@ namespace AS3Context
         /// <returns></returns>
         static public void FilterSource(FileModel model, MxmlFilterContext ctx)
         {
-            ctx.model = model;
+            ctx.Model = model;
             model.InlinedIn = "xml";
-            model.InlinedRanges = ctx.as3ranges;
+            model.InlinedRanges = ctx.As3Ranges;
 
-            if (model.MetaDatas == null) model.MetaDatas = new List<ASMetaData>();
-            foreach (string key in ctx.namespaces.Keys)
+         /*   if (model.MetaDatas == null) model.MetaDatas = new List<ASMetaData>();
+            foreach (string key in ctx.Namespaces.Keys)
             {
                 ASMetaData meta = new ASMetaData("Namespace");
                 meta.Params = new Dictionary<string, string>();
-                meta.Params.Add(key, ctx.namespaces[key]);
+                meta.Params.Add(key, ctx.Namespaces[key]);
                 model.MetaDatas.Add(meta);
-            }
+            }*/
 
             ClassModel aClass = model.GetPublicClass();
-            if (aClass == ClassModel.VoidClass) 
+            if (aClass == ClassModel.VoidClass)
                 return;
-            aClass.Comments = "<" + ctx.baseTag + "/>";
+            aClass.Comments = "<" + ctx.BaseTag + "/>";
 
-            Dictionary<string, string> resolved = new Dictionary<string,string>();
-            foreach (MemberModel mxmember in ctx.mxmlMembers)
+            Dictionary<string, string> resolved = new Dictionary<string, string>();
+            foreach (MemberModel mxmember in ctx.MxmlMembers)
             {
                 string tag = mxmember.Type;
                 string type = null;
-                if (resolved.ContainsKey(tag)) type = resolved[tag];
-                else
+                if (!resolved.TryGetValue(tag, out type))
                 {
                     type = MxmlComplete.ResolveType(ctx, tag);
                     resolved[tag] = type;
@@ -436,6 +798,46 @@ namespace AS3Context
                 {
                     member.Comments = "<" + tag + "/>";
                     member.Type = type;
+                }
+            }
+
+            for (int i = 1, count = model.Classes.Count; i < count; i++)
+            {
+                var pClass = model.Classes[i];
+                var ctxComponent = ctx.Components[i - 1];
+                var diff = pClass.LineFrom - ctxComponent.Outline[0].LineFrom;
+                pClass.LineFrom -= diff;
+                pClass.LineTo -= diff;
+                if (pClass.Name.StartsWith("$Anon_")) pClass.Access = Visibility.Default;   // Hack for hiding from completion list, I think it should be done through ExcludeClass, but there is a point to discuss about it
+                foreach (var pModel in pClass.Members.Items)
+                {
+                    if (pModel.Name != "outerDocument")
+                    {
+                        pModel.LineFrom -= diff;
+                        pModel.LineTo -= diff;
+                    }
+                    else
+                    {
+                        pModel.LineFrom = pModel.LineTo = aClass.LineFrom;
+                        pModel.Flags = FlagType.Intrinsic | FlagType.Variable;
+                    }
+                }
+
+                foreach (MemberModel mxmember in ctxComponent.MxmlMembers)
+                {
+                    string tag = mxmember.Type;
+                    string type = null;
+                    if (!resolved.TryGetValue(tag, out type))
+                    {
+                        type = MxmlComplete.ResolveType(ctx, tag);
+                        resolved[tag] = type;
+                    }
+                    MemberModel member = pClass.Members.Search(mxmember.Name, FlagType.Variable, Visibility.Public);
+                    if (member != null)
+                    {
+                        member.Comments = "<" + tag + "/>";
+                        member.Type = type;
+                    }
                 }
             }
         }
@@ -470,17 +872,18 @@ namespace AS3Context
                     string className = reader.GetAttribute("className") ?? reader.GetAttribute("class");
                     string name = reader.GetAttribute("name") ?? reader.GetAttribute("id");
                     string uri = reader.GetAttribute("uri") ?? defaultURI;
-                    if (uri == MxmlFilter.BETA_MX || uri == MxmlFilter.OLD_MX) uri = MxmlFilter.NEW_MX;
+                    if (uri == MxmlFilter.BETA_MX) uri = MxmlFilter.OLD_MX;
 
                     if (cat == null || cat.URI != uri)
                     {
-                        if (ContainsKey(uri)) cat = this[uri];
-                        else {
+                        if (!TryGetValue(uri, out cat))
+                        {
                             cat = new MxmlCatalog();
                             cat.URI = uri;
                             Add(uri, cat);
                         }
                     }
+                    if (className == "__AS3__.vec.Vector") className = "Vector";
                     cat[name] = className.Replace(':', '.');
                 }
             }

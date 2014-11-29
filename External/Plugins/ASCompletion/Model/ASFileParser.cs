@@ -558,7 +558,6 @@ namespace ASCompletion.Model
             model.Regions.Clear();
             model.PrivateSectionIndex = 0;
             model.Package = "";
-            model.MetaDatas = null;
 
             // state
             int len = ba.Length;
@@ -732,10 +731,10 @@ namespace ASCompletion.Model
                                 if (token == "include")
                                 {
                                     string inc = ba.Substring(tokPos, i - tokPos);
-                                    if (model.MetaDatas == null) model.MetaDatas = new List<ASMetaData>();
+                                    if (curClass.MetaDatas == null) curClass.MetaDatas = new List<ASMetaData>();
                                     ASMetaData meta = new ASMetaData("Include");
                                     meta.ParseParams(inc);
-                                    model.MetaDatas.Add(meta);
+                                    curClass.MetaDatas.Add(meta);
                                 }
                             }
                         }
@@ -1619,8 +1618,14 @@ namespace ASCompletion.Model
                             }
                         }
 
+                        // C style arrays declaration
+                        else if (!inValue && c1 == '[' && features.hasCArrays && curMember != null && curMember.Type != null && ba[i] == ']')
+                        {
+                            if (ba[i] == ']') curMember.Type = features.CArrayTemplate + "@" + curMember.Type;
+                        }
+
                         // metadata
-                        else if (!inValue && c1 == '[')
+                        else if (!inValue && c1 == features.meta)
                         {
                             if (version == 3)
                             {
@@ -1630,10 +1635,6 @@ namespace ASCompletion.Model
                                     carriedMetaData = carriedMetaData ?? new List<ASMetaData>();
                                     carriedMetaData.Add(meta);
                                 }
-                            }
-                            else if (features.hasCArrays && curMember != null && curMember.Type != null)
-                            {
-                                if (ba[i] == ']') curMember.Type = features.CArrayTemplate + "@" + curMember.Type;
                             }
                         }
 
@@ -2279,10 +2280,10 @@ namespace ASCompletion.Model
                         }
                         if (carriedMetaData != null)
                         {
-                            if (model.MetaDatas == null)
-                                model.MetaDatas = carriedMetaData;
+                            if (curClass.MetaDatas == null)
+                                curClass.MetaDatas = carriedMetaData;
                             else
-                                foreach (var meta in carriedMetaData) model.MetaDatas.Add(meta);
+                                foreach (var meta in carriedMetaData) curClass.MetaDatas.Add(meta);
 
                             carriedMetaData = null;
                         }

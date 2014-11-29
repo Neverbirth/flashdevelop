@@ -108,6 +108,7 @@ namespace HaXeContext
 
             // keywords
             features.dot = ".";
+            features.meta = '@';
             features.voidKey = "Void";
             features.objectKey = "Dynamic";
             features.booleanKey = "Bool";

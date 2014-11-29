@@ -4,6 +4,7 @@ using System.Text;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using PluginCore.Controls;
 using PluginCore.Localization;
 using PluginCore.Helpers;
 using PluginCore.Managers;
@@ -16,6 +17,7 @@ using AS3Context.Controls;
 using WeifenLuo.WinFormsUI.Docking;
 using System.Windows.Forms;
 using PluginCore;
+using XMLCompletion;
 
 namespace AS3Context
 {
@@ -29,6 +31,7 @@ namespace AS3Context
         static private AS3Settings settingObject;
         private Context contextInstance;
         private String settingFilename;
+        private String metaEntriesFilename;
         private bool inMXML;
         private System.Drawing.Image pluginIcon;
         private ProfilerUI profilerUI;
@@ -99,7 +102,7 @@ namespace AS3Context
             get { return settingObject as AS3Settings; }
         }
         #endregion
-        
+
         #region Required Methods
 
         /// <summary>
@@ -121,6 +124,8 @@ namespace AS3Context
         {
             FlexDebugger.Stop();
             if (profilerUI != null) profilerUI.Cleanup();
+            if (contextInstance != null && ASComplete.HandleMetaCompletionCallback == contextInstance.HandleMetaCompletion)
+                ASComplete.HandleMetaCompletionCallback = null;
             this.SaveSettings();
         }
 
@@ -129,6 +134,8 @@ namespace AS3Context
         /// </summary>
         public void HandleEvent(Object sender, NotifyEvent e, HandlingPriority priority)
         {
+            if (e.Type == EventType.Command) System.Diagnostics.Debug.WriteLine( (e as DataEvent).Action + " - " + priority.ToString());
+
             if (priority == HandlingPriority.Low)
             {
                 switch (e.Type)
@@ -203,6 +210,19 @@ namespace AS3Context
                         // Associate this context with AS3 language
                         ASCompletion.Context.ASContext.RegisterLanguage(contextInstance, "as3");
                         ASCompletion.Context.ASContext.RegisterLanguage(contextInstance, "mxml");
+
+                        // This event is launched after the first FileSwitch
+                        if (PluginBase.MainForm.CurrentDocument.IsEditable)
+                        {
+                            string ext = Path.GetExtension(PluginBase.MainForm.CurrentDocument.FileName).ToLower();
+                            inMXML = (ext == ".mxml");
+
+                            if (inMXML || (ext == ".as" && PluginBase.MainForm.CurrentDocument.SciControl.ConfigurationLanguage == "as3"))
+                            {
+                                ASComplete.HandleMetaCompletionCallback = contextInstance.HandleMetaCompletion;
+                            }
+                        }
+
                         break;
 
                     case EventType.FileSave:
@@ -211,11 +231,22 @@ namespace AS3Context
 
                         if (PluginBase.MainForm.CurrentDocument.IsEditable)
                         {
-                            string ext = Path.GetExtension(PluginBase.MainForm.CurrentDocument.FileName);
-                            inMXML = (ext.ToLower() == ".mxml");
+                            string ext = Path.GetExtension(PluginBase.MainForm.CurrentDocument.FileName).ToLower();
+                            inMXML = (ext == ".mxml");
                             MxmlComplete.IsDirty = true;
+
+                            if ((inMXML || (ext == ".as" && PluginBase.MainForm.CurrentDocument.SciControl.ConfigurationLanguage == "as3")) && contextInstance != null)
+                            {
+                                ASComplete.HandleMetaCompletionCallback = contextInstance.HandleMetaCompletion;
+                            }
+                            else if (contextInstance != null && ASComplete.HandleMetaCompletionCallback == contextInstance.HandleMetaCompletion) ASComplete.HandleMetaCompletionCallback = null;
                         }
-                        else inMXML = false;
+                        else
+                        {
+                            inMXML = false;
+                            if (contextInstance != null && ASComplete.HandleMetaCompletionCallback == contextInstance.HandleMetaCompletion)
+                                ASComplete.HandleMetaCompletionCallback = null;
+                        }
                         break;
                 }
                 return;
@@ -238,15 +269,15 @@ namespace AS3Context
                         {
                             FlexDebugger.Stop();
                         }
-                        else if (action == "FlashViewer.External" || action == "FlashViewer.Default" 
+                        else if (action == "FlashViewer.External" || action == "FlashViewer.Default"
                             || action == "FlashViewer.Popup" || action == "FlashViewer.Document")
                         {
-                            if (PluginBase.CurrentProject != null 
+                            if (PluginBase.CurrentProject != null
                                 && PluginBase.CurrentProject.EnableInteractiveDebugger)
                             {
                                 DataEvent de = new DataEvent(EventType.Command, "AS3Context.StartProfiler", null);
                                 EventManager.DispatchEvent(this, de);
-                                
+
                                 if (PluginBase.CurrentProject.TraceEnabled)
                                 {
                                     de = new DataEvent(EventType.Command, "AS3Context.StartDebugger", (e as DataEvent).Data);
@@ -282,9 +313,22 @@ namespace AS3Context
                         {
                             de.Handled = MxmlComplete.HandleAttributeValue(de.Data);
                         }
+                        else if (de.Action == "ASCompletion.ContextualGenerator")
+                        {
+                            MxmlGenerator.ContextualGenerator(ASCompletion.Context.ASContext.CurSciControl);
+                        }
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Handles the incoming character
+        /// </summary> 
+        private void OnChar(ScintillaNet.ScintillaControl sci, Int32 value)
+        {
+            if (sci.ConfigurationLanguage == "xml" && sci.Lexer == 5 && inMXML)
+                MxmlComplete.OnChar(sci, value);
         }
 
         private bool OpenVirtualFileModel(string virtualPath)
@@ -339,6 +383,7 @@ namespace AS3Context
             String dataPath = Path.Combine(PathHelper.DataDir, "AS3Context");
             if (!Directory.Exists(dataPath)) Directory.CreateDirectory(dataPath);
             this.settingFilename = Path.Combine(dataPath, "Settings.fdb");
+            this.metaEntriesFilename = Path.Combine(dataPath, "metaEntries.xml");
             this.pluginDesc = TextHelper.GetString("Info.Description");
             this.pluginIcon = PluginBase.MainForm.FindImage("123");
         }
@@ -382,9 +427,9 @@ namespace AS3Context
             ToolStrip toolbar = PluginBase.MainForm.ToolStrip;
             foreach (ToolStripItem item in toolbar.Items)
             {
-                if (item.Name == "CheckSyntax") 
-                { 
-                    checkSyntax = item; 
+                if (item.Name == "CheckSyntax")
+                {
+                    checkSyntax = item;
                     break;
                 }
             }
@@ -417,6 +462,7 @@ namespace AS3Context
             EventManager.AddEventHandler(this, EventType.UIStarted | EventType.ProcessArgs | EventType.FileSwitch | EventType.FileSave);
             EventManager.AddEventHandler(this, EventType.Command, HandlingPriority.High);
             EventManager.AddEventHandler(this, EventType.Command | EventType.Keys | EventType.ProcessArgs, HandlingPriority.Low);
+            UITools.Manager.OnCharAdded += new UITools.CharAddedHandler(OnChar);
         }
 
         /// <summary>
@@ -424,12 +470,21 @@ namespace AS3Context
         /// </summary>
         public void LoadSettings()
         {
+            IEnumerable<MetaEntry> metaEntries = null;
+            if (File.Exists(metaEntriesFilename))
+                metaEntries = DeserializeMetaEntries();
+
             settingObject = new AS3Settings();
-            if (!File.Exists(this.settingFilename)) this.SaveSettings();
+            if (!File.Exists(this.settingFilename))
+            {
+                settingObject.AS3Meta = metaEntries;
+                this.SaveSettings();
+            }
             else
             {
                 Object obj = ObjectSerializer.Deserialize(this.settingFilename, settingObject);
                 settingObject = (AS3Settings)obj;
+                settingObject.AS3Meta = metaEntries;
             }
             if (settingObject.AS3ClassPath == null) settingObject.AS3ClassPath = @"Library\AS3\intrinsic";
         }
@@ -566,6 +621,7 @@ namespace AS3Context
         public void SaveSettings()
         {
             ObjectSerializer.Serialize(this.settingFilename, settingObject);
+            SerializeMetaEntries();
         }
 
         /// <summary>
@@ -608,8 +664,194 @@ namespace AS3Context
                     }
                 }
             }
+
             return null;
         }
+
+        #region Metadata Tags
+
+        private IEnumerable<MetaEntry> DeserializeMetaEntries()
+        {
+            var retVal = new List<MetaEntry>();
+
+            try
+            {
+                using (var xmlReader = System.Xml.XmlReader.Create(metaEntriesFilename))
+                {
+                    xmlReader.MoveToContent();
+
+                    while (xmlReader.Read())
+                    {
+                        if (xmlReader.NodeType != System.Xml.XmlNodeType.Element) continue;
+
+                        if (xmlReader.Name == "metaEntry")
+                        {
+                            MetaEntry entry = new MetaEntry();
+                            entry.Label = xmlReader.GetAttribute("label");
+                            string decoratableFields = xmlReader.GetAttribute("decoratableFields");
+                            if (!string.IsNullOrEmpty(decoratableFields)) entry.DecoratableFields = (MetaEntry.DecoratableField)int.Parse(decoratableFields);
+                            string appearsInFieldHelp = xmlReader.GetAttribute("appearsInFieldHelp");
+                            if (!string.IsNullOrEmpty(appearsInFieldHelp)) entry.AppearsInFieldHelp = bool.Parse(appearsInFieldHelp);
+
+                            retVal.Add(entry);
+
+                            if (xmlReader.IsEmptyElement) continue;
+
+                            xmlReader.ReadStartElement();
+
+                            while (xmlReader.Name != "metaEntry")
+                            {
+                                if (xmlReader.Name == "fields")
+                                {
+                                    entry.Fields = new List<MetaField>();
+
+                                    if (xmlReader.NodeType != System.Xml.XmlNodeType.Element || xmlReader.IsEmptyElement)
+                                    {
+                                        xmlReader.Read();
+                                        continue;
+                                    }
+
+                                    xmlReader.ReadStartElement();
+
+                                    while (xmlReader.Name != "fields")
+                                    {
+                                        if (xmlReader.NodeType != System.Xml.XmlNodeType.Element)
+                                        {
+                                            xmlReader.Read(); 
+                                            continue;
+                                        }
+
+                                        if (xmlReader.Name == "field")
+                                        {
+                                            var field = new MetaField();
+                                            string mandatory = xmlReader.GetAttribute("mandatory");
+                                            field.Mandatory = !string.IsNullOrEmpty(mandatory) && bool.Parse(mandatory);
+                                            field.Name = xmlReader.GetAttribute("name");
+
+                                            entry.Fields.Add(field);
+                                        }
+
+                                        xmlReader.Read();
+                                    }
+
+                                }
+                                else if (xmlReader.Name == "description")
+                                {
+                                    entry.Description = new Dictionary<string, string>();
+
+                                    if (xmlReader.NodeType != System.Xml.XmlNodeType.Element || xmlReader.IsEmptyElement)
+                                    {
+                                        xmlReader.Read();
+                                        continue;
+                                    }
+
+                                    xmlReader.ReadStartElement();
+
+                                    while (xmlReader.Name != "description")
+                                    {
+                                        if (xmlReader.NodeType != System.Xml.XmlNodeType.Element)
+                                        {
+                                            xmlReader.Read();
+                                            continue;
+                                        }
+
+                                        entry.Description[xmlReader.Name] = xmlReader.ReadString();
+
+                                        xmlReader.Read();
+                                    }
+                                }
+
+                                xmlReader.Read();
+                            }
+
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ErrorManager.ShowError("Could not load Metadata entries file", ex);
+            }
+
+            return retVal;
+        }
+
+        private void SerializeMetaEntries()
+        {
+            var settings = new System.Xml.XmlWriterSettings()
+                {
+                    Encoding = new UTF8Encoding(false),
+                    Indent = true,
+                    OmitXmlDeclaration = true
+                };
+
+            using (var xmlWriter = System.Xml.XmlWriter.Create(metaEntriesFilename, settings))
+            {
+                xmlWriter.WriteStartElement("metaEntries");
+
+                if (settingObject.AS3Meta != null)
+                {
+                    foreach (var metaEntry in settingObject.AS3Meta)
+                    {
+                        xmlWriter.WriteStartElement("metaEntry");
+
+                        xmlWriter.WriteAttributeString("label", metaEntry.Label);
+
+                        if (metaEntry.DecoratableFields != 0)
+                            xmlWriter.WriteAttributeString("decoratableFields", ((int)metaEntry.DecoratableFields).ToString());
+
+                        if (metaEntry.AppearsInFieldHelp)
+                            xmlWriter.WriteAttributeString("appearsInFieldHelp", metaEntry.AppearsInFieldHelp.ToString());
+
+                        if (metaEntry.Fields != null && metaEntry.Fields.Count > 0)
+                        {
+                            xmlWriter.WriteStartElement("fields");
+
+                            foreach (var field in metaEntry.Fields)
+                            {
+                                xmlWriter.WriteStartElement("field");
+
+                                xmlWriter.WriteAttributeString("name", field.Name);
+                                if (field.Mandatory) 
+                                    xmlWriter.WriteAttributeString("mandatory", field.Mandatory.ToString());
+
+                                xmlWriter.WriteEndElement();
+                            }
+
+                            xmlWriter.WriteEndElement();
+                        }
+
+                        if (metaEntry.Description != null && metaEntry.Description.Count > 0)
+                        {
+                            string defaultKey = metaEntry.DefaultDescriptionKey;
+
+                            xmlWriter.WriteStartElement("description");
+
+                            xmlWriter.WriteStartElement(defaultKey);
+                            xmlWriter.WriteCData(metaEntry.Description[defaultKey]);
+                            xmlWriter.WriteEndElement();
+
+                            foreach (var entry in metaEntry.Description)
+                            {
+                                if (entry.Key == defaultKey) continue;
+
+                                xmlWriter.WriteStartElement(entry.Key);
+                                xmlWriter.WriteCData(entry.Value);
+                                xmlWriter.WriteEndElement();
+                            }
+
+                            xmlWriter.WriteEndElement();
+                        }
+
+                        xmlWriter.WriteEndElement();
+                    }
+                }
+
+                xmlWriter.WriteEndElement();
+            }
+        }
+
+        #endregion
 
         #endregion
 
@@ -645,7 +887,7 @@ namespace AS3Context
             }
 
             string descriptor = Path.Combine(path, "flex-sdk-description.xml");
-            if (!File.Exists(descriptor)) 
+            if (!File.Exists(descriptor))
                 descriptor = Path.Combine(path, "air-sdk-description.xml");
 
             if (File.Exists(descriptor))
@@ -678,7 +920,7 @@ namespace AS3Context
         }
 
         #endregion
-    
+
     }
 
 }

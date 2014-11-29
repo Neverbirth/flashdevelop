@@ -311,6 +311,9 @@ namespace ASCompletion.Model
                 }
             }*/
 
+            // META
+            ASMetaData.GenerateIntrinsic(MetaDatas, sb, nl, tab);
+
             // CLASS
             sb.Append(CommentDeclaration(Comments, tab0)).Append(tab0);
             if (!caching && InFile.Version != 3 && (this.Flags & (FlagType.Intrinsic | FlagType.Interface)) == 0)

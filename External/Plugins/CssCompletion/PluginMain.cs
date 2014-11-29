@@ -128,6 +128,13 @@ namespace CssCompletion
                     Keys keys = (e as KeyEvent).Value;
                     if (this.IsSupported(document) && keys == (Keys.Control | Keys.Space))
                     {
+                        // HACK: CSS completion for inline MXML, any better way? ATM, CSS completion is a bit useless for MXML, but will be addressed
+                        if (completion == null && Path.GetExtension(document.FileName).ToLower() == ".mxml")
+                        {
+                            features = enabledLanguages[".css"];
+                            completion = new Completion(config, settingObject);
+                            completion.OnFileChanged(features);
+                        }
                         if (completion != null)
                         {
                             completion.OnComplete(document.SciControl, document.SciControl.CurrentPos);

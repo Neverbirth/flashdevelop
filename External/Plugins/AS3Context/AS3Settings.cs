@@ -194,6 +194,8 @@ namespace AS3Context
         private string flashVersion = DEFAULT_FLASHVERSION;
         private string as3ClassPath;
         private string[] as3FileTypes;
+        [NonSerialized]
+        private IEnumerable<ASCompletion.Completion.MetaEntry> as3meta;
 
         [DisplayName("Default Flash Version")]
         [LocalizedCategory("ASCompletion.Category.Language"), LocalizedDescription("AS3Context.Description.DefaultFlashVersion"), DefaultValue(DEFAULT_FLASHVERSION)]
@@ -232,6 +234,19 @@ namespace AS3Context
                 if (value == as3FileTypes) return;
                 as3FileTypes = value;
                 FireChanged();
+            }
+        }
+
+        [DisplayName("AS3 Metadata")]
+        [LocalizedCategory("ASCompletion.Category.Language"), LocalizedDescription("AS3Context.Description.AS3FileTypes")] /*Description("Available Metadata tags in code completion")]*/
+        [Editor(typeof(ASCompletion.Forms.MetaEditor), typeof(UITypeEditor))]
+        [TypeConverter(typeof(MetaConverter))]
+        public IEnumerable<ASCompletion.Completion.MetaEntry> AS3Meta
+        {
+            get { return as3meta; }
+            set
+            {
+                as3meta = value;
             }
         }
         #endregion
@@ -298,6 +313,24 @@ namespace AS3Context
         private void FireChanged()
         {
             if (OnClasspathChanged != null) OnClasspathChanged();
+        }
+
+        private class MetaConverter : StringConverter
+        {
+            public override object ConvertTo(ITypeDescriptorContext context, System.Globalization.CultureInfo culture, object value, Type destinationType)
+            {
+                return "Metadata tag collection";
+            }
+
+            public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType)
+            {
+                return false;
+            }
+
+            public override bool CanConvertTo(ITypeDescriptorContext context, Type destinationType)
+            {
+                return true;
+            }
         }
     }
 }

@@ -93,6 +93,7 @@ namespace ASCompletion.Completion
                     && (resolve.Type.Flags & FlagType.Interface) > 0) // implement interface
                 {
                     contextParam = resolve.Type.Type;
+                    contextMember = null;
                     ShowImplementInterface(found);
                     return;
                 }
@@ -146,6 +147,7 @@ namespace ASCompletion.Completion
                         {
                             contextMatch = m;
                             contextParam = CheckEventType(m.Groups["event"].Value);
+                            contextMember = null;
                             ShowEventList(found);
                             return;
                         }
@@ -926,7 +928,8 @@ namespace ASCompletion.Completion
                         TemplateUtils.GetBoundary("EventHandlers"));
                     if (latest == null)
                     {
-                        if (ASContext.CommonSettings.MethodsGenerationLocations == MethodsGenerationLocations.AfterSimilarAccessorMethod)
+                        latest = contextMember;
+                        if (latest == null && ASContext.CommonSettings.MethodsGenerationLocations == MethodsGenerationLocations.AfterSimilarAccessorMethod)
                             latest = GetLatestMemberForFunction(inClass, GetDefaultVisibility(), member);
                         if (latest == null)
                             latest = member;
@@ -977,7 +980,9 @@ namespace ASCompletion.Completion
                     ClassModel aType = ASContext.Context.ResolveType(contextParam, ASContext.Context.CurrentModel);
                     if (aType.IsVoid()) return;
 
-                    latest = GetLatestMemberForFunction(inClass, Visibility.Public, null);
+                    latest = contextMember;
+                    if (latest == null)
+                        latest = GetLatestMemberForFunction(inClass, Visibility.Public, null);
                     if (latest == null)
                         latest = FindLatest(0, 0, inClass, false, false);
 
@@ -4293,7 +4298,7 @@ namespace ASCompletion.Completion
             {
                 foreach (InlineRange range in cFile.InlinedRanges)
                 {
-                    if (position > range.Start && position < range.End)
+                    if (position >= range.Start && position <= range.End)
                     {
                         line = sci.LineFromPosition(range.Start) + 1;
                         break;
@@ -4304,7 +4309,7 @@ namespace ASCompletion.Completion
             bool found = false;
             int packageLine = -1;
             string txt;
-            int indent = 0;
+            int indent = sci.GetLineIndentation(line);
             int skipIfDef = 0;
             Match mImport;
             while (line < curLine)
