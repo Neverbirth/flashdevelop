@@ -1,15 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using AS3Context.Utils;
 using ASCompletion;
-using ASCompletion.Context;
-using XMLCompletion;
 using ASCompletion.Model;
 using ASCompletion.Completion;
+using ASCompletion.Context;
+using XMLCompletion;
 using PluginCore;
 using PluginCore.Controls;
-using System.Text.RegularExpressions;
-using System.IO;
 using PluginCore.Helpers;
 
 namespace AS3Context
@@ -21,6 +23,9 @@ namespace AS3Context
         internal const int AttributeStyle = 3;
         internal const int AttributeValueStyle = 6;
         internal const int AttributeEqualStyle = 8;
+
+        static protected readonly Regex re_lastDot =
+            new Regex("\\.[^<]", RegexOptions.RightToLeft | RegexOptions.Compiled);
 
         static public bool IsDirty;
         static public Context context;
@@ -299,19 +304,40 @@ namespace AS3Context
 
             if (containedType != null) // container children tag
                 foreach (string ns in mxmlContext.Namespaces.Keys)
-            {
+                {
                     string uri = mxmlContext.Namespaces[ns];
-                if (ns != "*") mix.Add(new NamespaceItem(ns, uri));
+                    if (ns != "*") mix.Add(new NamespaceItem(ns, uri));
 
                     if (!allTags.ContainsKey(ns))
-                    continue;
-                foreach (string tag in allTags[ns])
-                {
-                    if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
-                        else if (containedType == "Object" || IsAssignableFrom(containedType, context.ResolveType(ResolveType(mxmlContext, ns, tag), mxmlContext.Model)))
-                            mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                        continue;
+                    if (containedType == "Object")
+                        foreach (string tag in allTags[ns])
+                        {
+                            if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
+                            else mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                        }
+                    else
+                    {
+                        var containedTypeModel = context.ResolveType(containedType, mxmlContext.Model);
+                        if ((containedTypeModel.Flags & FlagType.Final) > 0)
+                            foreach (string tag in allTags[ns].Where(t => ResolveType(mxmlContext, ns, t) == containedTypeModel.QualifiedName))
+                                mix.Add(new HtmlTagItem(tag, (ns == "*" ? tag : ns + ":" + tag), uri));
+                        else
+                            foreach (string tag in allTags[ns])
+                            {
+                                string cname = ResolveType(mxmlContext, ns, tag);
+                                string package = string.Empty;
+                                Match m = re_lastDot.Match(cname);
+                                if (m.Success)
+                                {
+                                    package = cname.Substring(0, m.Index);
+                                    cname = cname.Substring(m.Index + 1);
+                                }
+                                if (containedTypeModel.IsAssignableFrom(context.GetModel(package, cname, string.Empty)))
+                                    mix.Add(new HtmlTagItem(tag, (ns == "*" ? tag : ns + ":" + tag), uri));
+                            }
+                    }
                 }
-            }
 
             // cleanup and show list
             mix.Sort(new MXMLListItemComparer());
@@ -366,14 +392,20 @@ namespace AS3Context
                             var result = ResolveAttribute(gfModel, parentName, false);
                             if (result.ASResult == null) return null;
                             if (result.ASResult.Member != null)
-                                return GetChildrenType(result.ASResult.Member, result.ASResult.InClass);
+                                containedType = GetChildrenType(result.ASResult.Member, result.ASResult.InClass);
                             else if (result.MetaTag != null)
                             {
                                 // TODO: Add
                                 //GetAutoCompletionValuesFromMetaData(result.ASResult.InClass, )
-                }
-            }
-        }
+                            }
+                        }
+                    }
+
+                    if (containedType == "mx.core.IFactory")
+                        mix.Add(mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex3
+                                    ? new HtmlTagItem("Component", "mx:Component", MxmlFilter.OLD_MX)
+                                    : new HtmlTagItem("Component", "fx:Component", MxmlFilter.NEW_MX)
+                            );
                 }
             }
             return containedType;
@@ -443,9 +475,32 @@ namespace AS3Context
             string containedType = AddParentAttributes(mix, excludes); // current tag attributes
 
             if (containedType != null && allTags.ContainsKey(ns)) // container children tags
-                foreach (string tag in allTags[ns])
-                    if (containedType == "Object" || IsAssignableFrom(containedType, context.ResolveType(ResolveType(mxmlContext, ns, tag), mxmlContext.Model)))
-                    mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+            {
+                if (containedType == "Object")
+                    foreach (string tag in allTags[ns])
+                        mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                else
+                {
+                    var containedTypeModel = context.ResolveType(containedType, mxmlContext.Model);
+                    if ((containedTypeModel.Flags & FlagType.Final) > 0)
+                        foreach (string tag in allTags[ns].Where(t => ResolveType(mxmlContext, ns, t) == containedTypeModel.QualifiedName))
+                            mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                    else
+                        foreach (string tag in allTags[ns])
+                        {
+                            string cname = ResolveType(mxmlContext, ns, tag);
+                            string package = string.Empty;
+                            Match m = re_lastDot.Match(cname);
+                            if (m.Success)
+                            {
+                                package = cname.Substring(0, m.Index);
+                                cname = cname.Substring(m.Index + 1);
+                            }
+                            if (containedTypeModel.IsAssignableFrom(context.GetModel(package, cname, string.Empty)))
+                                mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                        }
+                }
+            }
 
             // cleanup and show list
             mix.Sort(new MXMLListItemComparer());
@@ -463,38 +518,6 @@ namespace AS3Context
             CompletionList.Show(items, true, tagContext.Name ?? "");
             CompletionList.MinWordLength = 0;
             return true;
-        }
-
-        static public bool IsAssignableFrom(ClassModel src, ClassModel dst)
-        {
-            return IsAssignableFrom(src.QualifiedName, dst);
-        }
-
-        static public bool IsAssignableFrom(string srcType, ClassModel dst)
-        {
-            dst.ResolveExtends();
-            do
-            {
-                if (dst.QualifiedName == srcType)
-                {
-                    return true;
-                }
-                
-                if (dst.Implements != null)
-                {
-                    foreach (var implement in dst.Implements)
-                    {
-                        if (IsAssignableFrom(srcType, context.ResolveType(implement, dst.InFile)))
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                dst = dst.Extends;
-            } while (!dst.IsVoid());
-
-            return false;
         }
 
         static public bool HandleElementClose(object data)
@@ -521,7 +544,7 @@ namespace AS3Context
                     {
                         string uri = mxmlContext.Namespaces[ns];
                         if (ns != "fx")
-                            snip += String.Format("\n\t@namespace {0} \"{1}\";", ns, uri);
+                            snip += string.Format("\n\t@namespace {0} \"{1}\";", ns, uri);
                     }
                     snip += "\n\t$(EntryPoint)\n</" + tagContext.Name + ">";
                     SnippetHelper.InsertSnippetText(sci, sci.CurrentPos, snip);
@@ -556,23 +579,25 @@ namespace AS3Context
             List<ICompletionListItem> items;
             if (!dotFound)
             {
-            tagClass.ResolveExtends();
+                if (tagContext.Closing) return true;
 
-            List<ICompletionListItem> mix = new List<ICompletionListItem>();
-            List<string> excludes = new List<string>();
-            GetTagAttributes(tagClass, mix, excludes, null);
+                tagClass.ResolveExtends();
 
-            // cleanup and show list
-            mix.Sort(new MXMLListItemComparer());
-            string previous = null;
-                items = new List<ICompletionListItem>();
-            foreach (ICompletionListItem item in mix)
-            {
-                if (previous == item.Label) continue;
-                previous = item.Label;
-                if (excludes.Contains(previous)) continue;
-                items.Add(item);
-            }
+                List<ICompletionListItem> mix = new List<ICompletionListItem>();
+                List<string> excludes = new List<string>();
+                GetTagAttributes(tagClass, mix, excludes, null);
+
+                // cleanup and show list
+                mix.Sort(new MXMLListItemComparer());
+                string previous = null;
+                    items = new List<ICompletionListItem>();
+                foreach (ICompletionListItem item in mix)
+                {
+                    if (previous == item.Label) continue;
+                    previous = item.Label;
+                    if (excludes.Contains(previous)) continue;
+                    items.Add(item);
+                }
             }
             else
             {
@@ -748,7 +773,38 @@ namespace AS3Context
             string containedType = null;
 
             if (tmpClass.InFile.Package != "mx.builtin" && tmpClass.InFile.Package != "fx.builtin")
+            {
                 mix.Add(new HtmlAttributeItem("id", "String", null, ns));
+                
+                if (parentTag != null)
+                {
+                    if (parentTag.Tag == "fx:Vector")
+                    {
+                        int i = parentTag.Start + 10;
+                        string attrName, attrValue;
+                        string src = ASContext.CurSciControl.Text;
+
+                        containedType = "Object";
+                        do
+                        {
+                            attrName = MxmlFilter.GetAttributeName(src, ref i);
+                            attrValue = MxmlFilter.GetAttributeValue(src, ref i);
+                            if (attrName == "type")
+                            {
+                                if (attrValue != null) containedType = attrValue;
+                                break;
+                            }
+                        } while (attrName != null);
+                    }
+                    else
+                    {
+                        var grandParentTag = GetParentTag(parentTag.Start, false);
+                        var componentTag = mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex3 ? "mx:Component" : "fx:Component";
+                        if (grandParentTag == null || grandParentTag.Tag == componentTag)
+                            containedType = "Object";
+                    }
+                }
+            }
             else containedType = "Object";
 
             if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
@@ -756,17 +812,32 @@ namespace AS3Context
                 // NOTE: Not sure at this moment if FlexJS does support all of these properties. It does at least some of them.
                 if (parentTag == null || parentTag.Tag == "fx:Component")
                     mix.Add(new HtmlAttributeItem("implements", "Interface", "http://ns.adobe.com/mxml/2009"));
-                else if (tagContext.NameSpace != "fx")
+                else if (ns != null)
                 {
-                    mix.Add(new HtmlAttributeItem("includeIn", "Array", "http://ns.adobe.com/mxml/2009"));
-                    mix.Add(new HtmlAttributeItem("excludeFrom", "Array", "http://ns.adobe.com/mxml/2009"));
-                    mix.Add(new HtmlAttributeItem("itemCreationPolicy", "String", "http://ns.adobe.com/mxml/2009"));
-                    mix.Add(new HtmlAttributeItem("itemDestructionPolicy", "String", "http://ns.adobe.com/mxml/2009"));
+                    if (ns != "fx" && parentTag.Level != 0)
+                    {
+                        mix.Add(new HtmlTagItem("includeIn", ns + ":includeIn", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlTagItem("excludeFrom", ns + ":excludeFrom", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlTagItem("itemCreationPolicy", ns + ":itemCreationPolicy", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlTagItem("itemDestructionPolicy", ns + ":itemDestructionPolicy", "http://ns.adobe.com/mxml/2009"));
+                    }
+                    else if (parentTag.Tag == "fx:Vector")
+                        mix.Add(new HtmlTagItem("type", ns + ":type", "http://ns.adobe.com/mxml/2009"));
                 }
-                else if (tagContext.Name == "fx:Vector")
-                    mix.Add(new HtmlAttributeItem("type", "Class", "http://ns.adobe.com/mxml/2009"));
+                else
+                {
+                    if (tagContext.NameSpace != "fx")
+                    {
+                        mix.Add(new HtmlAttributeItem("includeIn", "Array", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlAttributeItem("excludeFrom", "Array", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlAttributeItem("itemCreationPolicy", "String", "http://ns.adobe.com/mxml/2009"));
+                        mix.Add(new HtmlAttributeItem("itemDestructionPolicy", "String", "http://ns.adobe.com/mxml/2009"));
+                    }
+                    else if (tagContext.Name == "fx:Vector")
+                        mix.Add(new HtmlAttributeItem("type", "Class", "http://ns.adobe.com/mxml/2009"));
+                }
             }
-
+            
             string defaultProperty = null;
             while (tmpClass != null && !tmpClass.IsVoid())
             {
@@ -791,7 +862,7 @@ namespace AS3Context
                                     {
                                         defaultProperty = meta.Params["default"];
                                         break;
-                }
+                                    }
                         }
                         if (defaultProperty != null)
                         {
@@ -803,8 +874,6 @@ namespace AS3Context
 
                                     break;
                                 }
-
-                            break;
                         }
                     }
                 }
@@ -1366,7 +1435,7 @@ namespace AS3Context
             MxmlInlineRange retVal = null;
             foreach (var m in mxmlContext.Outline)
             {
-                if (m.Start < basePos && m.End > basePos)
+                if (m.Start < basePos && (m.End > basePos || m.End == -1))
                 {
                     retVal = m;
                 }

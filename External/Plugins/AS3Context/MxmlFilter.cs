@@ -99,8 +99,7 @@ namespace AS3Context
 
         static private List<MxmlCatalog> catalogs = new List<MxmlCatalog>();
         static private Dictionary<string, MxmlCatalogs> archive = new Dictionary<string, MxmlCatalogs>();
-        //TODO: Change to a HashSet with .NET 3.5
-        static private List<string> namespaces = new List<string>();
+        static private HashSet<string> namespaces = new HashSet<string>();
 
         /// <summary>
         /// Reset catalogs for new classpath definition
@@ -171,12 +170,10 @@ namespace AS3Context
             {
                 FileInfo info = new FileInfo(file);
                 MxmlCatalogs cat;
-                //TODO: Improve with .NET 3.5
-                if (!string.IsNullOrEmpty(uri) && namespaces.BinarySearch(uri) < 0)
-                {
+                
+                if (!string.IsNullOrEmpty(uri) && !namespaces.Contains(uri))
                     namespaces.Add(uri);
-                    namespaces.Sort();
-                }
+
                 if (archive.ContainsKey(file))
                 {
                     cat = archive[file];
@@ -199,7 +196,7 @@ namespace AS3Context
             catch (Exception) { }
         }
 
-        static public List<string> GetNamespaces()
+        static public HashSet<string> GetNamespaces()
         {
             return namespaces;
         }
