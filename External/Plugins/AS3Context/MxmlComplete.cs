@@ -1506,12 +1506,10 @@ namespace AS3Context
 
         public static string ResolveType(MxmlFilterContext ctx, string ns, string name)
         {
-            if (!ctx.Namespaces.ContainsKey(ns))
+            string uri;
+            if (!ctx.Namespaces.TryGetValue(ns, out uri) || uri == "*")
                 return name;
 
-            string uri = ctx.Namespaces[ns];
-            if (uri == "*")
-                return name;
             if (uri.EndsWith(".*"))
                 return uri.Substring(0, uri.Length - 1) + name;
 
@@ -1520,8 +1518,9 @@ namespace AS3Context
 
             foreach (MxmlCatalog cat in ctx.Catalogs)
             {
-                if (cat.URI == uri && cat.ContainsKey(name))
-                    return cat[name];
+                string type;
+                if (cat.URI == uri && cat.TryGetValue(name, out type))
+                    return type;
             }
             return name;
         }
