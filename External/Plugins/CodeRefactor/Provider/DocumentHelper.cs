@@ -82,6 +82,14 @@ namespace CodeRefactor.Provider
         }
 
         /// <summary>
+        /// Gets the collection of files opened when this DocumentHelper was created.
+        /// </summary>
+        public IDictionary<String, ITabbedDocument> InitiallyOpenedFiles
+        {
+            get { return initiallyOpenedFiles; }
+        }
+
+        /// <summary>
         /// Retrieves a list of the currently open documents.
         /// </summary>
         protected IDictionary<String, ITabbedDocument> GetOpenDocuments()
@@ -122,11 +130,11 @@ namespace CodeRefactor.Provider
         /// If the document was not already previously opened, this will flag 
         /// it as a temporary file.
         /// </summary>
-        public ScintillaControl LoadDocument(String fileName)
+        public ITabbedDocument LoadDocument(String fileName)
         {
             ITabbedDocument newDocument = (ITabbedDocument)PluginBase.MainForm.OpenEditableDocument(fileName);
             this.RegisterLoadedDocument(newDocument);
-            return ASContext.CurSciControl;
+            return newDocument;
         }
 
         /// <summary>

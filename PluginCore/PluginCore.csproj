@@ -321,6 +321,7 @@
     </Compile>
     <Compile Include="PluginCore\Controls\WinFormUtils.cs" />
     <Compile Include="PluginCore\Helpers\ConfigHelper.cs" />
+    <Compile Include="PluginCore\Helpers\FileInspector.cs" />
     <Compile Include="PluginCore\Helpers\ScaleHelper.cs" />
     <Compile Include="PluginCore\Helpers\JvmConfigHelper.cs" />
     <Compile Include="PluginCore\Helpers\ProcessHelper.cs" />
@@ -340,6 +341,7 @@
     <Compile Include="PluginCore\Utilities\CryptoClasses.cs" />
     <Compile Include="PluginCore\Utilities\ImageKonverter.cs" />
     <Compile Include="PluginCore\Utilities\LogicalComparer.cs" />
+    <Compile Include="PluginCore\Utilities\ImageQuantizers.cs" />
     <Compile Include="PluginCore\Utilities\ProcessRunner.cs" />
     <Compile Include="PluginCore\Utilities\InteropSHFileOperation.cs" />
     <Compile Include="PluginCore\Utilities\SingleInstanceApp.cs" />

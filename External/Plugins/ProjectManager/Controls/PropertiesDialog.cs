@@ -20,39 +20,39 @@ using Ookii.Dialogs;
 
 namespace ProjectManager.Controls
 {
-	public class PropertiesDialog : SmartForm
-	{
-		#region Form Designer
+    public class PropertiesDialog : SmartForm
+    {
+        #region Form Designer
 
-		private System.Windows.Forms.Button btnOK;
-		private System.Windows.Forms.Button btnCancel;
+        private System.Windows.Forms.Button btnOK;
+        private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Button btnApply;
         private System.Windows.Forms.TabPage movieTab;
-		private System.Windows.Forms.TextBox outputSwfBox;
-		private System.Windows.Forms.Label exportinLabel;
-		private System.Windows.Forms.Label pxLabel;
-		private System.Windows.Forms.Label fpsLabel;
+        private System.Windows.Forms.TextBox outputSwfBox;
+        private System.Windows.Forms.Label exportinLabel;
+        private System.Windows.Forms.Label pxLabel;
+        private System.Windows.Forms.Label fpsLabel;
         private System.Windows.Forms.Label bgcolorLabel;
-		private System.Windows.Forms.Label framerateLabel;
-		private System.Windows.Forms.Label dimensionsLabel;
+        private System.Windows.Forms.Label framerateLabel;
+        private System.Windows.Forms.Label dimensionsLabel;
         private System.Windows.Forms.Label xLabel;
-		private System.Windows.Forms.ColorDialog colorDialog;
+        private System.Windows.Forms.ColorDialog colorDialog;
         private System.Windows.Forms.Button outputBrowseButton;
-		private System.Windows.Forms.GroupBox generalGroupBox;
-		private System.Windows.Forms.GroupBox playGroupBox;
+        private System.Windows.Forms.GroupBox generalGroupBox;
+        private System.Windows.Forms.GroupBox playGroupBox;
         private System.Windows.Forms.TabPage classpathsTab;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.Button btnGlobalClasspaths;
         private System.Windows.Forms.GroupBox groupBox3;
-		private System.Windows.Forms.TabPage buildTab;
-		private System.Windows.Forms.GroupBox groupBox4;
-		private System.Windows.Forms.TextBox preBuildBox;
-		private System.Windows.Forms.Button preBuilderButton;
-		private System.Windows.Forms.GroupBox groupBox5;
-		private System.Windows.Forms.Button postBuilderButton;
-		private System.Windows.Forms.TextBox postBuildBox;
-		private System.Windows.Forms.ToolTip agressiveTip;
+        private System.Windows.Forms.TabPage buildTab;
+        private System.Windows.Forms.GroupBox groupBox4;
+        private System.Windows.Forms.TextBox preBuildBox;
+        private System.Windows.Forms.Button preBuilderButton;
+        private System.Windows.Forms.GroupBox groupBox5;
+        private System.Windows.Forms.Button postBuilderButton;
+        private System.Windows.Forms.TextBox postBuildBox;
+        private System.Windows.Forms.ToolTip agressiveTip;
         private System.Windows.Forms.CheckBox alwaysExecuteCheckBox;
         private System.Windows.Forms.ComboBox testMovieCombo;
         private System.Windows.Forms.TabPage compilerTab;
@@ -82,32 +82,32 @@ namespace ProjectManager.Controls
         protected System.Windows.Forms.TextBox widthTextBox;
         private ClasspathControl classpathControl;
 
-		/// <summary>
-		/// Required designer variable.
-		/// </summary>
-		private System.ComponentModel.IContainer components = null;
+        /// <summary>
+        /// Required designer variable.
+        /// </summary>
+        private System.ComponentModel.IContainer components = null;
 
-		/// <summary>
-		/// Clean up any resources being used.
-		/// </summary>
-		/// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-		protected override void Dispose(bool disposing)
-		{
-			if (disposing && (components != null))
-			{
-				components.Dispose();
-			}
-			base.Dispose(disposing);
-		}
+        /// <summary>
+        /// Clean up any resources being used.
+        /// </summary>
+        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && (components != null))
+            {
+                components.Dispose();
+            }
+            base.Dispose(disposing);
+        }
 
-		#region Windows Form Designer Generated Code
+        #region Windows Form Designer Generated Code
 
-		/// <summary>
-		/// Required method for Designer support - do not modify
-		/// the contents of this method with the code editor.
-		/// </summary>
-		private void InitializeComponent()
-		{
+        /// <summary>
+        /// Required method for Designer support - do not modify
+        /// the contents of this method with the code editor.
+        /// </summary>
+        private void InitializeComponent()
+        {
             this.components = new System.ComponentModel.Container();
             this.btnOK = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
@@ -793,21 +793,23 @@ namespace ProjectManager.Controls
             this.sdkTabPage.ResumeLayout(false);
             this.sdkTabPage.PerformLayout();
             this.ResumeLayout(false);
-		}
+        }
 
-		#endregion
+        #endregion
 
-		#endregion
+        #endregion
 
-		private Project project;
+        private Project project;
         private CompilerOptions optionsCopy;
         private Boolean propertiesChanged;
         private Boolean platformChanged;
         private Boolean classpathsChanged;
         private Boolean assetsChanged;
         private Boolean sdkChanged;
+        private Boolean isPropertyGridReadOnly;
+        private LanguagePlatform langPlatform;
 
-		public event EventHandler OpenGlobalClasspaths;
+        public event EventHandler OpenGlobalClasspaths;
 
         public PropertiesDialog() 
         {
@@ -854,7 +856,7 @@ namespace ProjectManager.Controls
             protected set { classpathsChanged = value; }
         }
 
-		public bool AssetsChanged
+        public bool AssetsChanged
         {
             get { return assetsChanged; }
             protected set { assetsChanged = value; }
@@ -912,8 +914,10 @@ namespace ProjectManager.Controls
         #endregion
 
         protected virtual void BuildDisplay()
-		{
+        {
             this.Text = " " + project.Name + " (" + project.Language.ToUpper() + ") " + TextHelper.GetString("Info.Properties");
+
+            langPlatform = GetLanguagePlatform(project.MovieOptions.Platform);
 
             InitOutputTab();
             InitBuildTab();
@@ -929,14 +933,28 @@ namespace ProjectManager.Controls
                 tabControl.TabPages.Remove(classpathsTab);
             }
 
-			btnApply.Enabled = false;
-		}
+            btnApply.Enabled = false;
+        }
 
         private void InitOptionsTab()
         {
+            UpdateCompilerOptions();
+        }
+
+        private void UpdateCompilerOptions()
+        {
+            var readOnly = IsExternalConfiguration();
+            if (readOnly == isPropertyGridReadOnly && propertyGrid.SelectedObject != null) 
+                return;
+            isPropertyGridReadOnly = readOnly;
+
             // clone the compiler options object because the PropertyGrid modifies its
             // object directly
             optionsCopy = project.CompilerOptions.Clone();
+
+            if (isPropertyGridReadOnly)
+                TypeDescriptor.AddAttributes(optionsCopy, new Attribute[] { new ReadOnlyAttribute(true) });
+
             propertyGrid.SelectedObject = optionsCopy;
             propertiesChanged = false;
         }
@@ -955,7 +973,21 @@ namespace ProjectManager.Controls
             classpathControl.Classpaths = project.Classpaths.ToArray();
             classpathControl.Language = project.Language;
             classpathControl.LanguageBox.Visible = false;
+            UpdateClasspaths();
             classpathsChanged = false;
+        }
+
+        private void UpdateClasspaths()
+        {
+            if (IsExternalConfiguration())
+            {
+                classpathControl.Enabled = false;
+                label2.Text = String.Format(TextHelper.GetString("Info.ProjectClasspathsDisabled"), langPlatform.Name);
+                return;
+            }
+
+            classpathControl.Enabled = true;
+            label2.Text = TextHelper.GetString("Info.ProjectClasspaths");
         }
 
         private void InitSDKTab()
@@ -1020,6 +1052,7 @@ namespace ProjectManager.Controls
 
             InitCombo(versionCombo, project.MovieOptions.TargetVersions(this.platformCombo.Text), project.MovieOptions.Version);
             versionCombo.SelectedIndexChanged += new EventHandler(versionCombo_SelectedIndexChanged);
+            UpdateVersionCombo();
 
             InitTestMovieOptions();
             UpdateGeneralPanel();
@@ -1034,13 +1067,26 @@ namespace ProjectManager.Controls
                 || state == TestMovieBehavior.Webserver;
         }
 
+        private void UpdateVersionCombo()
+        {
+            if (versionCombo.Items.Count > 1)
+            {
+                versionCombo.Enabled = true;
+            }
+            else
+            {
+                versionCombo.Enabled = false;
+                versionCombo.SelectedIndex = -1;
+            }
+        }
+
         private void InitTestMovieOptions()
         {
             OutputType output = GetOutput();
             string platform = GetPlatform();
 
             List<TestMovieBehavior> options = new List<TestMovieBehavior>();
-            if (/*output == OutputType.Application &&*/ platform == PlatformData.FLASHPLAYER_PLATFORM)
+            if (platform == PlatformData.FLASHPLAYER_PLATFORM)
             {
                 options.Add(TestMovieBehavior.Default);
                 options.Add(TestMovieBehavior.NewTab);
@@ -1092,30 +1138,30 @@ namespace ProjectManager.Controls
             else return (TestMovieBehavior)Enum.Parse(typeof(TestMovieBehavior), (testMovieCombo.SelectedItem as ComboItem).Value.ToString());
         }
 
-		protected void Modified()
-		{
-			btnApply.Enabled = true;
-		}
+        protected void Modified()
+        {
+            btnApply.Enabled = true;
+        }
 
-		protected virtual bool Apply()
-		{
-			MovieOptions options = project.MovieOptions;
+        protected virtual bool Apply()
+        {
+            MovieOptions options = project.MovieOptions;
 
-			try
-			{
+            try
+            {
                 project.OutputType = GetOutput();
                 if (OuputValid(outputSwfBox.Text)) project.OutputPath = outputSwfBox.Text;
-				project.Classpaths.Clear();
-				project.Classpaths.AddRange(classpathControl.Classpaths);
-				options.Width = int.Parse(widthTextBox.Text);
-				options.Height = int.Parse(heightTextBox.Text);
-				options.BackgroundColor = Color.FromArgb(255, colorLabel.BackColor);
-				options.Fps = int.Parse(fpsTextBox.Text);
+                project.Classpaths.Clear();
+                project.Classpaths.AddRange(classpathControl.Classpaths);
+                options.Width = int.Parse(widthTextBox.Text);
+                options.Height = int.Parse(heightTextBox.Text);
+                options.BackgroundColor = Color.FromArgb(255, colorLabel.BackColor);
+                options.Fps = int.Parse(fpsTextBox.Text);
                 options.Platform = GetPlatform();
                 options.Version = versionCombo.Text;
-				project.PreBuildEvent = preBuildBox.Text;
-				project.PostBuildEvent = postBuildBox.Text;
-				project.AlwaysRunPostBuild = alwaysExecuteCheckBox.Checked;
+                project.PreBuildEvent = preBuildBox.Text;
+                project.PostBuildEvent = postBuildBox.Text;
+                project.AlwaysRunPostBuild = alwaysExecuteCheckBox.Checked;
                 project.TestMovieBehavior = GetTestMovie();
 
                 if (sdkChanged)
@@ -1127,18 +1173,18 @@ namespace ProjectManager.Controls
                         project.PreferredSDK = sdk != null ? sdk.ToPreferredSDK() : null;
                     }
                 }
-			}
-			catch (Exception exception)
-			{
+            }
+            catch (Exception exception)
+            {
                 ErrorManager.ShowError(exception);
-				return false;
-			}
+                return false;
+            }
             // copy compiler option values
             project.CompilerOptions = optionsCopy;
-			btnApply.Enabled = false;
-			propertiesChanged = true;
-			return true;
-		}
+            btnApply.Enabled = false;
+            propertiesChanged = true;
+            return true;
+        }
 
         private bool OuputValid(string path)
         {
@@ -1153,33 +1199,33 @@ namespace ProjectManager.Controls
             }
         }
 
-		private void btnOK_Click(object sender, EventArgs e)
-		{
-			if (btnApply.Enabled) if (!Apply()) return;
-			this.Close();
-		}
+        private void btnOK_Click(object sender, EventArgs e)
+        {
+            if (btnApply.Enabled) if (!Apply()) return;
+            this.Close();
+        }
 
-		private void btnCancel_Click(object sender, EventArgs e)
-		{
-			this.Close();
-		}
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            this.Close();
+        }
 
-		private void btnApply_Click(object sender, EventArgs e)
-		{
-			Apply();
-		}
+        private void btnApply_Click(object sender, EventArgs e)
+        {
+            Apply();
+        }
 
-		private void outputSwfBox_TextChanged(object sender, EventArgs e)
-		{
-			classpathsChanged = true;
-			Modified();
-		}
+        private void outputSwfBox_TextChanged(object sender, EventArgs e)
+        {
+            classpathsChanged = true;
+            Modified();
+        }
 
-		private void widthTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
+        private void widthTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
 
-		private void heightTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
+        private void heightTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
 
-		private void colorTextBox_TextChanged(object sender, EventArgs e) 
+        private void colorTextBox_TextChanged(object sender, EventArgs e) 
         {
             string rgb = colorTextBox.Text;
             if (rgb.Length == 0) rgb = "#000000";
@@ -1193,65 +1239,44 @@ namespace ProjectManager.Controls
             catch { colorLabel.BackColor = Color.Black; }
             Modified(); 
         }
-		private void fpsTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
+        private void fpsTextBox_TextChanged(object sender, EventArgs e) { Modified(); }
 
-		private void preBuildBox_TextChanged(object sender, System.EventArgs e) { Modified(); }
+        private void preBuildBox_TextChanged(object sender, System.EventArgs e) { Modified(); }
 
-		private void postBuildBox_TextChanged(object sender, System.EventArgs e) { Modified(); }
+        private void postBuildBox_TextChanged(object sender, System.EventArgs e) { Modified(); }
 
-		private void alwaysExecuteCheckBox_CheckedChanged(object sender, System.EventArgs e) { Modified(); }
+        private void alwaysExecuteCheckBox_CheckedChanged(object sender, System.EventArgs e) { Modified(); }
 
-		private void testMovieCombo_SelectedIndexChanged(object sender, System.EventArgs e) 
+        private void testMovieCombo_SelectedIndexChanged(object sender, System.EventArgs e) 
         { 
             Modified();
             editCommandButton.Visible = testMovieCombo.Text.IndexOf("..") > 0;
         }
 
-		private void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
-		{ 
+        private void propertyGrid_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
+        { 
             Modified();
         }
 
         void platformCombo_SelectedIndexChanged(object sender, EventArgs e)
         {
+            langPlatform = GetLanguagePlatform(platformCombo.Text);
+
             this.versionCombo.Items.Clear();
             this.versionCombo.Items.AddRange(project.MovieOptions.TargetVersions(this.platformCombo.Text));
             this.versionCombo.SelectedIndex = Math.Max(0, this.versionCombo.Items.IndexOf(
                         project.MovieOptions.DefaultVersion(this.platformCombo.Text)));
 
+            UpdateVersionCombo();
             InitTestMovieOptions();
             UpdateGeneralPanel();
             UpdateEditCommandButton();
-
             DetectExternalToolchain();
+            UpdateClasspaths();
+            UpdateCompilerOptions();
 
             platformChanged = true;
             Modified();
-        }
-
-        private void DetectExternalToolchain()
-        {
-            if (!PlatformData.SupportedLanguages.ContainsKey(project.Language)) return;
-            var lang = PlatformData.SupportedLanguages[project.Language];
-
-            var platformName = (platformCombo.SelectedItem ?? "").ToString();
-            if (!lang.Platforms.ContainsKey(platformName)) return;
-
-            var platform = lang.Platforms[platformName];
-            if (platform.ExternalToolchain == null) return;
-
-            SelectItem(outputCombo, OutputType.Application);
-            SelectItem(testMovieCombo, TestMovieBehavior.Custom);
-            project.TestMovieCommand = "";
-
-            if (platform.DefaultProjectFile == null) return;
-
-            foreach(string fileName in platform.DefaultProjectFile)
-                if (File.Exists(project.GetAbsolutePath(fileName)))
-                {
-                    outputSwfBox.Text = fileName;
-                    break;
-                }
         }
 
         private void SelectItem(ComboBox combo, object value)
@@ -1264,7 +1289,7 @@ namespace ProjectManager.Controls
                 }
         }
 
-		private void versionCombo_SelectedIndexChanged(object sender, EventArgs e)
+        private void versionCombo_SelectedIndexChanged(object sender, EventArgs e)
         {
             platformChanged = true;
             Modified();
@@ -1276,44 +1301,44 @@ namespace ProjectManager.Controls
             Modified();
         }
 
-		private void colorLabel_Click(object sender, EventArgs e)
-		{
-			if (this.colorDialog.ShowDialog() == DialogResult.OK)
-			{
-				this.colorLabel.BackColor = this.colorDialog.Color;
-				this.colorTextBox.Text = this.ToHtml(this.colorLabel.BackColor);
-				Modified();
-			}
-		}
+        private void colorLabel_Click(object sender, EventArgs e)
+        {
+            if (this.colorDialog.ShowDialog() == DialogResult.OK)
+            {
+                this.colorLabel.BackColor = this.colorDialog.Color;
+                this.colorTextBox.Text = this.ToHtml(this.colorLabel.BackColor);
+                Modified();
+            }
+        }
 
-		private string ToHtml(Color c)
-		{
-			return string.Format("#{0:X6}", (c.R << 16) + (c.G << 8) + c.B);
-		}
+        private string ToHtml(Color c)
+        {
+            return string.Format("#{0:X6}", (c.R << 16) + (c.G << 8) + c.B);
+        }
 
-		private void btnGlobalClasspaths_Click(object sender, EventArgs e)
-		{
-			if (OpenGlobalClasspaths != null) OpenGlobalClasspaths(this,new EventArgs());
-		}
+        private void btnGlobalClasspaths_Click(object sender, EventArgs e)
+        {
+            if (OpenGlobalClasspaths != null) OpenGlobalClasspaths(this,new EventArgs());
+        }
 
-		private void outputBrowseButton_Click(object sender, EventArgs e)
-		{
-			SaveFileDialog dialog = new SaveFileDialog();
+        private void outputBrowseButton_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog dialog = new SaveFileDialog();
             dialog.Filter = "*.*|*.*"; // TextHelper.GetString("Info.FlashMovieFilter");
-			dialog.OverwritePrompt = false;
-			dialog.InitialDirectory = project.Directory;
-			// try pre-setting the current output path
-			try
-			{
-				string path = project.GetAbsolutePath(outputSwfBox.Text);
-				if (File.Exists(path)) dialog.FileName = path;
-			}
-			catch { }
+            dialog.OverwritePrompt = false;
+            dialog.InitialDirectory = project.Directory;
+            // try pre-setting the current output path
+            try
+            {
+                string path = project.GetAbsolutePath(outputSwfBox.Text);
+                if (File.Exists(path)) dialog.FileName = path;
+            }
+            catch { }
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 outputSwfBox.Text = project.GetRelativePath(dialog.FileName);
             }
-		}
+        }
 
         private void editCommandButton_Click(object sender, System.EventArgs e)
         {
@@ -1338,23 +1363,23 @@ namespace ProjectManager.Controls
             }
         }
 
-		private void preBuilderButton_Click(object sender, System.EventArgs e)
-		{
-			using (BuildEventDialog dialog = new BuildEventDialog(project))
-			{
-				dialog.CommandLine = preBuildBox.Text;
-				if (dialog.ShowDialog(this) == DialogResult.OK) preBuildBox.Text = dialog.CommandLine;
-			}
-		}
+        private void preBuilderButton_Click(object sender, System.EventArgs e)
+        {
+            using (BuildEventDialog dialog = new BuildEventDialog(project))
+            {
+                dialog.CommandLine = preBuildBox.Text;
+                if (dialog.ShowDialog(this) == DialogResult.OK) preBuildBox.Text = dialog.CommandLine;
+            }
+        }
 
-		private void postBuilderButton_Click(object sender, System.EventArgs e)
-		{
-			using (BuildEventDialog dialog = new BuildEventDialog(project))
-			{
-				dialog.CommandLine = postBuildBox.Text;
-				if (dialog.ShowDialog(this) == DialogResult.OK) postBuildBox.Text = dialog.CommandLine;
-			}
-		}
+        private void postBuilderButton_Click(object sender, System.EventArgs e)
+        {
+            using (BuildEventDialog dialog = new BuildEventDialog(project))
+            {
+                dialog.CommandLine = postBuildBox.Text;
+                if (dialog.ShowDialog(this) == DialogResult.OK) postBuildBox.Text = dialog.CommandLine;
+            }
+        }
 
         private void outputCombo_SelectedIndexChanged(object sender, EventArgs e)
         {
@@ -1372,6 +1397,11 @@ namespace ProjectManager.Controls
             bool isGraphical = project.MovieOptions.IsGraphical(GetPlatform());
             widthTextBox.Enabled = heightTextBox.Enabled = fpsTextBox.Enabled
                 = colorTextBox.Enabled = colorLabel.Enabled = isGraphical;
+
+            if (IsExternalToolchain())
+                exportinLabel.Text = TextHelper.GetString("Label.ConfigurationFile");
+            else
+                exportinLabel.Text = TextHelper.GetString("Label.OutputFile");
         }
 
         private void manageButton_Click(object sender, EventArgs e)
@@ -1405,7 +1435,50 @@ namespace ProjectManager.Controls
             Modified();
         }
 
-	}
+        /* PLATFORM CONFIGURATION */
+
+        private void DetectExternalToolchain()
+        {
+            if (!IsExternalToolchain()) return;
+
+            SelectItem(outputCombo, OutputType.Application);
+            SelectItem(testMovieCombo, TestMovieBehavior.Custom);
+            project.TestMovieCommand = "";
+
+            if (langPlatform.DefaultProjectFile == null) return;
+
+            foreach (string fileName in langPlatform.DefaultProjectFile)
+                if (File.Exists(project.GetAbsolutePath(fileName)))
+                {
+                    outputSwfBox.Text = fileName;
+                    break;
+                }
+        }
+
+        private bool IsExternalConfiguration()
+        {
+            string selectedVersion = versionCombo.Text == "" ? "1.0" : versionCombo.Text;
+            PlatformVersion version = langPlatform != null ? langPlatform.GetVersion(selectedVersion) : null;
+            return version != null && version.Commands != null && version.Commands.ContainsKey("display");
+        }
+
+        private bool IsExternalToolchain()
+        {
+            return langPlatform != null && langPlatform.ExternalToolchain != null;
+        }
+
+        private LanguagePlatform GetLanguagePlatform(string platformName)
+        {
+            if (PlatformData.SupportedLanguages.ContainsKey(project.Language))
+            {
+                SupportedLanguage lang = PlatformData.SupportedLanguages[project.Language];
+                if (lang.Platforms.ContainsKey(platformName))
+                    return lang.Platforms[platformName];
+            }
+            return null;
+        }
+
+    }
 
     class ComboItem
     {
@@ -1421,7 +1494,7 @@ namespace ProjectManager.Controls
 
         public override string ToString()
         {
- 	         return Label;
+             return Label;
         }
     }
 }

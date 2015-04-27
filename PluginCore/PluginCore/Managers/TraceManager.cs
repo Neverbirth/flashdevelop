@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace PluginCore.Managers
 {
     public class TraceManager
-	{
+    {
         private static Boolean synchronizing;
         private static Int32 MAX_QUEUE = 1000;
         private static List<TraceItem> traceLog;
@@ -25,15 +25,15 @@ namespace PluginCore.Managers
         /// <summary>
         /// Adds a new entry to the log
         /// </summary>
-        public static void Add(object message)
+        public static void Add(String message)
         {
             Add(message, 0);
         }
 
         /// <summary>
-		/// Adds a new entry to the log
-		/// </summary>
-        public static void Add(object message, Int32 state)
+        /// Adds a new entry to the log
+        /// </summary>
+        public static void Add(String message, Int32 state)
         {
             Add(new TraceItem(message, state));
         }
@@ -41,7 +41,7 @@ namespace PluginCore.Managers
         /// <summary>
         /// Adds a new entry to the log in an unsafe threading context
         /// </summary>
-        public static void AddAsync(object message)
+        public static void AddAsync(String message)
         {
             AddAsync(message, 0);
         }
@@ -61,7 +61,7 @@ namespace PluginCore.Managers
         /// <summary>
         /// Adds a new entry to the log in an unsafe threading context
         /// </summary>
-        public static void AddAsync(object message, Int32 state)
+        public static void AddAsync(String message, Int32 state)
         {
             if ((PluginBase.MainForm as Form).InvokeRequired)
             {
@@ -88,7 +88,7 @@ namespace PluginCore.Managers
         /// <summary>
         /// After a delay, synchronizes the traces
         /// </summary>
-        static void asyncTimerElapsed(Object sender, System.Timers.ElapsedEventArgs e)
+        private static void asyncTimerElapsed(Object sender, System.Timers.ElapsedEventArgs e)
         {
             lock (asyncQueue)
             {
@@ -133,7 +133,7 @@ namespace PluginCore.Managers
             get { return traceLog.AsReadOnly(); }
         }
 
-	}
+    }
 
     public class TraceItem
     {
@@ -141,10 +141,10 @@ namespace PluginCore.Managers
         private DateTime timestamp;
         private String message;
 
-        public TraceItem(object message, Int32 state)
+        public TraceItem(String message, Int32 state)
         {
             this.timestamp = DateTime.Now;
-            if (message != null) this.message = message.ToString();
+            this.message = message;
             this.state = state;
         }
 

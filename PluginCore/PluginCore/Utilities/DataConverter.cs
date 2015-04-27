@@ -75,7 +75,7 @@ namespace PluginCore.Utilities
         }
 
         /// <summary>
-        /// Converts a String to a color
+        /// Converts a String to a color (BGR order)
         /// </summary>
         public static Int32 StringToColor(String aColor)
         {
@@ -107,11 +107,27 @@ namespace PluginCore.Utilities
         }
 
         /// <summary>
-        /// Converts a color to a integer
+        /// Converts a integer (BGR order) to a color
+        /// </summary>
+        private static Color BGRToColor(Int32 bgr)
+        {
+            return Color.FromArgb((bgr >> 0) & 0xff, (bgr >> 8) & 0xff, (bgr >> 16) & 0xff);
+        }
+
+        /// <summary>
+        /// Converts a color to an integer (BGR order)
+        /// </summary>
+        public static Int32 ColorToBGR(Color color)
+        {
+            return TO_COLORREF(color.ToArgb() & 0x00ffffff);
+        }
+
+        /// <summary>
+        /// Alias for ColorToBGR to not break the API.
         /// </summary>
         public static Int32 ColorToInt32(Color color)
         {
-            return TO_COLORREF(color.ToArgb() & 0x00ffffff);
+            return ColorToBGR(color);
         }
 
     }

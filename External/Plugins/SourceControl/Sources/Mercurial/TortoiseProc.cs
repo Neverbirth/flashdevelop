@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Diagnostics;
 using System.IO;
 
@@ -33,7 +31,7 @@ namespace SourceControl.Sources.Mercurial
         {
             string cmd = PluginMain.SCSettings.TortoiseHGProcPath;
             if (cmd != null && File.Exists(cmd)) return cmd;
-            if (String.IsNullOrEmpty(cmd)) cmd = "hgtk";
+            if (String.IsNullOrEmpty(cmd)) cmd = "thgw.exe";
             return ResolveTortoiseProcPath(cmd);
         }
 

@@ -273,8 +273,9 @@ namespace ASCompletion.Completion
 
                 // "assign var to statement" suggestion
                 int curLine = Sci.CurrentLine;
-                string ln = Sci.GetLine(curLine);
-                if (ln.Trim().Length > 0 && ln.TrimEnd().Length <= Sci.CurrentPos - Sci.PositionFromLine(curLine) && ln.IndexOf("=") == -1)
+                string ln = Sci.GetLine(curLine).TrimEnd();
+                if (ln.Length > 0 && ln.IndexOf("=") == -1 
+                    && ln.Length <= Sci.CurrentPos - Sci.PositionFromLine(curLine)) // cursor at end of line
                 {
                     ShowAssignStatementToVarList(found);
                     return;
@@ -714,7 +715,7 @@ namespace ASCompletion.Completion
                 result = null;
             string label;
             ClassModel inClass = result != null ? result.RelClass : found.inClass;
-            bool isInterface = ClassIsInterface(inClass);
+            bool isInterface = (inClass.Flags & FlagType.Interface) > 0;
             if (!isInterface && result == null)
             {
                 if (ASContext.Context.Features.protectedKey != null && ASContext.CommonSettings.GenerateProtectedDeclarations)
@@ -2232,13 +2233,7 @@ namespace ASCompletion.Completion
                 {
                     if (subClosuresCount == 0)
                     {
-                        if (c == '[')
-                        {
-                            result = new ASResult();
-                            result.Type = ctx.ResolveType(ctx.Features.arrayKey, null);
-                            types.Insert(0, result);
-                        }
-                        else if (c == '{')
+                        if (c == '{')
                         {
                             if (sb.ToString().TrimStart().Length > 0)
                             {
@@ -2277,6 +2272,14 @@ namespace ASCompletion.Completion
                 }
                 else if ((c == ')' || c == ']' || c == '>' || c == '}') && !wasEscapeChar && !isDoubleQuote && !isSingleQuote)
                 {
+                    if (c == ']')
+                    {
+                        result = ASComplete.GetExpressionType(Sci, p);
+                        if (result.Type != null) result.Member = null;
+                        else result.Type = ctx.ResolveType(ctx.Features.arrayKey, null);
+                        types.Insert(0, result);
+                        writeParam = true;
+                    }
                     subClosuresCount--;
                     sb.Append(c);
                     wasEscapeChar = false;
@@ -2383,7 +2386,7 @@ namespace ASCompletion.Completion
                                 types.Insert(0, result);
                             }
                         }
-
+                        
                         if (types.Count == 0)
                         {
                             result = new ASResult();
@@ -3238,43 +3241,29 @@ namespace ASCompletion.Completion
 
         private static void GenerateFunction(MemberModel member, int position, bool detach, ClassModel inClass)
         {
-            bool isInterface = ClassIsInterface(inClass);
-            bool isConstructor = (member.Flags & FlagType.Constructor) > 0;
             string template = "";
-            string result = "";
-            if (isInterface)
+            string decl = "";
+            if ((inClass.Flags & FlagType.Interface) > 0)
             {
                 template = TemplateUtils.GetTemplate("IFunction");
-                result = TemplateUtils.ToDeclarationString(member, template);
+                decl = TemplateUtils.ToDeclarationString(member, template);
             }
-            else if (isConstructor)
+            else if ((member.Flags & FlagType.Constructor) > 0)
             {
                 template = TemplateUtils.GetTemplate("Constructor");
-                result = TemplateUtils.ToDeclarationWithModifiersString(member, template);
+                decl = TemplateUtils.ToDeclarationWithModifiersString(member, template);
             }
             else
             {
                 template = TemplateUtils.GetTemplate("Function");
-                result = TemplateUtils.ToDeclarationWithModifiersString(member, template);
-                result = TemplateUtils.ReplaceTemplateVariable(result, "Body", null);
+                decl = TemplateUtils.ToDeclarationWithModifiersString(member, template);
+                decl = TemplateUtils.ReplaceTemplateVariable(decl, "Body", null);
             }
-
-            if (detach)
-            {
-                result = NewLine + TemplateUtils.ReplaceTemplateVariable(result, "BlankLine", NewLine);
-            }
-            else
-            {
-                result = TemplateUtils.ReplaceTemplateVariable(result, "BlankLine", null);
-            }
-            InsertCode(position, result);
+            if (detach) decl = NewLine + TemplateUtils.ReplaceTemplateVariable(decl, "BlankLine", NewLine);
+            else decl = TemplateUtils.ReplaceTemplateVariable(decl, "BlankLine", null);
+            InsertCode(position, decl);
         }
-
-        private static bool ClassIsInterface(ClassModel cm)
-        {
-            return (cm.Flags & FlagType.Interface) > 0;
-        }
-
+        
         private static void GenerateVariable(MemberModel member, int position, bool detach)
         {
             string result = "";
@@ -3385,11 +3374,11 @@ namespace ASCompletion.Completion
             string kind = features.varKey;
 
             if ((member.Flags & FlagType.Getter) > 0)
-				kind = features.getKey;
+                kind = features.getKey;
             else if ((member.Flags & FlagType.Setter) > 0)
-				kind = features.setKey;
-			else if (member.Flags == FlagType.Function)
-				kind = features.functionKey;
+                kind = features.setKey;
+            else if (member.Flags == FlagType.Function)
+                kind = features.functionKey;
 
             Regex reMember = new Regex(String.Format(@"{0}\s+({1})[\s:]", kind, member.Name));
 
@@ -3532,9 +3521,15 @@ namespace ASCompletion.Completion
             return null;
         }
 
-        static private void GenerateGetter(string name, MemberModel member, int position)
+        private static void GenerateGetter(string name, MemberModel member, int position)
         {
-            string acc = GetPublicAccessor(member);
+            string acc;
+            if (isHaxe)
+            {
+                acc = GetStaticKeyword(member);
+                if (!string.IsNullOrEmpty(acc)) acc += " ";
+            }
+            else acc = GetPublicAccessor(member);
             string template = TemplateUtils.GetTemplate("Getter");
             string decl = NewLine + TemplateUtils.ReplaceTemplateVariable(template, "Modifiers", acc);
             decl = TemplateUtils.ReplaceTemplateVariable(decl, "Name", name);
@@ -3544,9 +3539,14 @@ namespace ASCompletion.Completion
             InsertCode(position, decl);
         }
 
-        static private void GenerateSetter(string name, MemberModel member, int position)
+        private static void GenerateSetter(string name, MemberModel member, int position)
         {
-            string acc = GetPublicAccessor(member);
+            string acc;
+            if (isHaxe)
+            {
+                acc = GetStaticKeyword(member);
+                if (!string.IsNullOrEmpty(acc)) acc += " ";
+            } else acc = GetPublicAccessor(member);
             string template = TemplateUtils.GetTemplate("Setter");
             string decl = NewLine + TemplateUtils.ReplaceTemplateVariable(template, "Modifiers", acc);
             decl = TemplateUtils.ReplaceTemplateVariable(decl, "Name", name);
@@ -3557,7 +3557,7 @@ namespace ASCompletion.Completion
             InsertCode(position, decl);
         }
 
-        static private void GenerateGetterSetter(string name, MemberModel member, int position)
+        private static void GenerateGetterSetter(string name, MemberModel member, int position)
         {
             string template = TemplateUtils.GetTemplate("GetterSetter");
             if (template == "")
@@ -3567,7 +3567,13 @@ namespace ASCompletion.Completion
                 GenerateGetter(name, member, position);
                 return;
             }
-            string acc = GetPublicAccessor(member);
+            string acc;
+            if (isHaxe)
+            {
+                acc = GetStaticKeyword(member);
+                if (!string.IsNullOrEmpty(acc)) acc += " ";
+            }
+            else acc = GetPublicAccessor(member);
             string decl = NewLine + TemplateUtils.ReplaceTemplateVariable(template, "Modifiers", acc);
             decl = TemplateUtils.ReplaceTemplateVariable(decl, "Name", name);
             decl = TemplateUtils.ReplaceTemplateVariable(decl, "Type", FormatType(member.Type));
@@ -3577,27 +3583,30 @@ namespace ASCompletion.Completion
             InsertCode(position, decl);
         }
 
-        static private string GetPrivateAccessor(MemberModel member)
+        private static string GetStaticKeyword(MemberModel member)
         {
-            string acc = GetPrivateKeyword();
-            if ((member.Flags & FlagType.Static) > 0) acc = (ASContext.Context.Features.staticKey ?? "static") + " " + acc;
-            return acc;
+            if ((member.Flags & FlagType.Static) > 0) return ASContext.Context.Features.staticKey ?? "static";
+            return string.Empty;
         }
 
-        static public string GetPrivateKeyword()
+        private static string GetPrivateAccessor(MemberModel member)
         {
-            string acc;
-            if (GetDefaultVisibility() == Visibility.Protected)
-                acc = ASContext.Context.Features.protectedKey ?? "protected";
-            else acc = ASContext.Context.Features.privateKey ?? "private";
-            return acc;
+            string acc = GetStaticKeyword(member);
+            if (!string.IsNullOrEmpty(acc)) acc += " ";
+            return acc + GetPrivateKeyword();
         }
 
-        static private string GetPublicAccessor(MemberModel member)
+        private static string GetPrivateKeyword()
         {
-            string acc = ASContext.Context.Features.publicKey ?? "public";
-            if ((member.Flags & FlagType.Static) > 0) acc = (ASContext.Context.Features.staticKey ?? "static") + " " + acc;
-            return acc;
+            if (GetDefaultVisibility() == Visibility.Protected) return ASContext.Context.Features.protectedKey ?? "protected";
+            return ASContext.Context.Features.privateKey ?? "private";
+        }
+
+        private static string GetPublicAccessor(MemberModel member)
+        {
+            string acc = GetStaticKeyword(member);
+            if (!string.IsNullOrEmpty(acc)) acc += " ";
+            return acc + ASContext.Context.Features.publicKey ?? "public";
         }
 
         private static MemberModel GetLatestMemberForFunction(ClassModel inClass, Visibility funcVisi, MemberModel isStatic)
@@ -3752,20 +3761,16 @@ namespace ASCompletion.Completion
         static private string GetDeclaration(MemberModel member, bool addModifiers)
         {
             // modifiers
-            FlagType ft = member.Flags;
-            string modifiers = "";
-
-            modifiers += TemplateUtils.GetStaticExternOverride(member);
-
-            if (addModifiers)
-                modifiers += TemplateUtils.GetModifiers(member);
+            string modifiers = TemplateUtils.GetStaticExternOverride(member);
+            if (addModifiers) modifiers += TemplateUtils.GetModifiers(member);
             
             // signature
+            FlagType ft = member.Flags;
             if ((ft & FlagType.Getter) > 0)
                 return String.Format("{0}function get {1}", modifiers, member.ToDeclarationString());
             else if ((ft & FlagType.Setter) > 0)
                 return String.Format("{0}function set {1}", modifiers, member.ToDeclarationString());
-			else if (ft == FlagType.Function)
+            else if (ft == FlagType.Function)
                 return String.Format("{0}function {1}", modifiers, member.ToDeclarationString());
             else if (((ft & FlagType.Constant) > 0) && ASContext.Context.Settings.LanguageId != "AS2")
                 return String.Format("{0}const {1}", modifiers, member.ToDeclarationString());
@@ -3786,9 +3791,7 @@ namespace ASCompletion.Completion
             // explore members
             IASContext ctx = ASContext.Context;
             ClassModel curClass = ctx.CurrentClass;
-            if (curClass.IsVoid())
-                return false;
-            ContextFeatures features = ASContext.Context.Features;
+            if (curClass.IsVoid()) return false;
 
             List<MemberModel> members = new List<MemberModel>();
             curClass.ResolveExtends(); // Resolve inheritance chain
@@ -3859,8 +3862,7 @@ namespace ASCompletion.Completion
             FlagType flags = member.Flags;
             string acc = "";
             string decl = "";
-            if (features.hasNamespaces && member.Namespace != null
-                && member.Namespace.Length > 0 && member.Namespace != "internal")
+            if (features.hasNamespaces && !string.IsNullOrEmpty(member.Namespace) && member.Namespace != "internal")
                 acc = member.Namespace;
             else if ((member.Access & Visibility.Public) > 0) acc = features.publicKey;
             else if ((member.Access & Visibility.Internal) > 0) acc = features.internalKey;
@@ -4366,8 +4368,7 @@ namespace ASCompletion.Completion
             sci.LineScroll(0, firstLine - sci.FirstVisibleLine + 1);
 
             ASContext.Context.RefreshContextCache(fullPath);
-            if (sci.EOLMode == 2) return sci.GetLine(line).Length + nl.Length;
-            else return sci.GetLine(line).Length + nl.Length - 1;
+            return sci.GetLine(line).Length;
         }
         #endregion
 

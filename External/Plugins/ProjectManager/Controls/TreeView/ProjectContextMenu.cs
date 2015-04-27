@@ -355,6 +355,11 @@ namespace ProjectManager.Controls.TreeView
             menu.Add(CommandPrompt, 0);
             if (Win32.ShouldUseWin32()) menu.Add(ShellMenu, 0);
             AddCompileTargetItems(menu, path, true);
+
+            bool addLibrary = project.IsLibraryAsset(path);
+            menu.Add(AddLibrary, 2, addLibrary);
+            if (addLibrary) menu.Add(LibraryOptions, 2);
+
             if (projectTree.SelectedPaths.Length == 1 && project.IsCompilable)
             {
                 DirectoryNode node = projectTree.SelectedNode as DirectoryNode;

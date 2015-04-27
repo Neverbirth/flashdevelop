@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using PluginCore;
 using System.IO;
 using SourceControl.Sources;
@@ -9,13 +8,12 @@ using ProjectManager.Projects;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Reflection;
-using PluginCore.Managers;
 using PluginCore.Localization;
-using System.Threading;
+using PluginCore.Helpers;
 
 namespace SourceControl.Actions
 {
-    public class ProjectWatcher
+    public static class ProjectWatcher
     {
         private static bool initialized = false;
 
@@ -28,7 +26,7 @@ namespace SourceControl.Actions
         public static bool Initialized { get { return initialized; } }
         public static Image Skin { get; set; }
         public static Project CurrentProject { get { return currentProject; } }
-        public static VCManager VcManager { get { return vcManager; } }
+        public static VCManager VCManager { get { return vcManager; } }
 
         public static void Init()
         {
@@ -40,11 +38,11 @@ namespace SourceControl.Actions
                 try
                 {
                     Assembly assembly = Assembly.GetExecutingAssembly();
-                    Skin = new Bitmap(assembly.GetManifestResourceStream("SourceControl.Resources.icons.png"));
+                    Skin = new Bitmap(assembly.GetManifestResourceStream(ScaleHelper.GetScale() > 1.5 ? "SourceControl.Resources.icons32.png" : "SourceControl.Resources.icons.png"));
                 }
                 catch
                 {
-                    Skin = new Bitmap(160, 16);
+                    Skin = ScaleHelper.GetScale() > 1.5 ? new Bitmap(320, 32) : new Bitmap(160, 16);
                 }
             }
             

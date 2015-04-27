@@ -118,11 +118,13 @@ namespace HaXeContext
             features.importKeyAlt = "using";
             features.typesPreKeys = new string[] { "import", "new", "extends", "implements", "using" };
             features.codeKeywords = new string[] { 
-                "enum", "typedef", "class", "interface", "var", "function", "new", "cast", "return", "break", 
+                "var", "function", "new", "cast", "return", "break", 
                 "continue", "if", "else", "for", "while", "do", "switch", "case", "default", "$type",
-                "null", "untyped", "true", "false", "try", "catch", "throw", "inline", "dynamic",
-                "extends", "using", "import", "implements", "abstract", "macro"
+                "null", "untyped", "true", "false", "try", "catch", "throw", "trace", "macro"
             };
+            features.declKeywords = new string[] { "var", "function" };
+            features.accessKeywords = new string[] { "extern", "inline", "dynamic", "macro", "override", "public", "private", "static" };
+            features.typesKeywords = new string[] { "import", "using", "class", "interface", "typedef", "enum", "abstract" };
             features.varKey = "var";
             features.overrideKey = "override";
             features.functionKey = "function";
@@ -161,7 +163,7 @@ namespace HaXeContext
                 string hxPath = currentSDK;
                 if (hxPath != null && Path.IsPathRooted(hxPath))
                 {
-                    SetHaxeEnvironment(hxPath);
+                    if (hxPath != currentEnv) SetHaxeEnvironment(hxPath);
                     haxelib = Path.Combine(hxPath, haxelib);
                 }
                 
@@ -207,6 +209,8 @@ namespace HaXeContext
         public override void UserRefreshRequest()
         {
             haxelibsCache.Clear();
+            HaxeProject proj = PluginBase.CurrentProject as HaxeProject;
+            if (proj != null) proj.UpdateVars(false);
         }
 
         /// <summary>
@@ -241,6 +245,7 @@ namespace HaXeContext
             features.metadata = new Dictionary<string, string>();
 
             Process process = createHaxeProcess("--help-metas");
+            if (process == null) return;
             process.Start();
 
             String metaList = process.StandardOutput.ReadToEnd();
@@ -248,7 +253,6 @@ namespace HaXeContext
 
             Regex regex = new Regex("@:([a-zA-Z]*)(?: : )(.*?)(?= @:[a-zA-Z]* :)");
             metaList = Regex.Replace(metaList, "\\s+", " ");
-            metaList += "@:fake :";
 
             MatchCollection matches = regex.Matches(metaList);
 
@@ -863,11 +867,11 @@ namespace HaXeContext
         }
 
         /// <summary>
-		/// Retrieves a class model from its name
-		/// </summary>
-		/// <param name="cname">Class (short or full) name</param>
-		/// <param name="inClass">Current file</param>
-		/// <returns>A parsed class or an empty ClassModel if the class is not found</returns>
+        /// Retrieves a class model from its name
+        /// </summary>
+        /// <param name="cname">Class (short or full) name</param>
+        /// <param name="inClass">Current file</param>
+        /// <returns>A parsed class or an empty ClassModel if the class is not found</returns>
         public override ClassModel ResolveType(string cname, FileModel inFile)
         {
             // unknown type
@@ -1128,11 +1132,8 @@ namespace HaXeContext
             // compiler path
             var hxPath = currentSDK ?? ""; 
             var process = Path.Combine(hxPath, "haxe.exe");
-            /*if (!File.Exists(process))
-            {
-                ErrorManager.ShowInfo(String.Format(TextHelper.GetString("Info.HaXeExeError"), "\n"));
+            if (!File.Exists(process))
                 return null;
-            }*/
 
             // Run haxe compiler
             Process proc = new Process();

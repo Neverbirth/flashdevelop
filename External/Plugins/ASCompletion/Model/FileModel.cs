@@ -9,6 +9,7 @@ using PluginCore.Helpers;
 
 namespace ASCompletion.Model
 {
+    [Serializable]
     public class InlineRange
     {
         public string Syntax;
@@ -26,7 +27,8 @@ namespace ASCompletion.Model
         }
     }
 
-    public class ASMetaData : IComparable
+    [Serializable]
+    public class ASMetaData: IComparable
     {
         static private Regex reNameTypeParams = 
             new Regex("([^\"'\\s]+)\\s*=\\s*[\"']([^\"']+)[\"'],{0,1}\\s*", RegexOptions.Compiled);
@@ -100,17 +102,20 @@ namespace ASCompletion.Model
         }
     }
 
+    [Serializable]
     public class FileModel
     {
         static public FileModel Ignore = new FileModel();
 
+        [NonSerialized]
         public System.Windows.Forms.TreeState OutlineState;
 
+        [NonSerialized]
         public IASContext Context;
 
+        [NonSerialized]
         public bool OutOfDate;
         public DateTime LastWriteTime;
-        public bool CachedModel;
 
         public bool HasFiltering;
         public string InlinedIn;
@@ -163,7 +168,7 @@ namespace ASCompletion.Model
             Package = "";
             Module = "";
             FileName = fileName ?? "";
-            haXe = (FileName.Length > 3) ? FileHelper.IsHaxeExtension(Path.GetExtension(FileName)) : false;
+            haXe = (FileName.Length > 3) ? FileInspector.IsHaxeFile(FileName, Path.GetExtension(FileName)) : false;
             //
             Namespaces = new Dictionary<string, Visibility>();
             //
@@ -199,7 +204,7 @@ namespace ASCompletion.Model
             if (OutOfDate)
             {
                 OutOfDate = false;
-                if (FileName != "" && File.Exists(FileName) && (CachedModel || LastWriteTime < System.IO.File.GetLastWriteTime(FileName)))
+                if (FileName != "" && File.Exists(FileName) && LastWriteTime < System.IO.File.GetLastWriteTime(FileName))
                     try
                     {
                         ASFileParser.ParseFile(this);
@@ -296,7 +301,7 @@ namespace ASCompletion.Model
                 sb.Append(nl);
             }
 
-            // members			
+            // members          
             string decl;
             foreach (MemberModel member in Members)
             {

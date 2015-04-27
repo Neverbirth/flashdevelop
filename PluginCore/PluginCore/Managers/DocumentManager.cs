@@ -21,7 +21,7 @@ namespace PluginCore.Managers
         /// </summary>
         public static String GetNewDocumentName(String extension)
         {
-            if (extension == null || extension.Trim() == String.Empty)
+            if (String.IsNullOrEmpty(extension))
             {
                 String setting = PluginBase.MainForm.Settings.DefaultFileExtension;
                 if (setting.Trim() != String.Empty) extension = setting;
@@ -65,7 +65,10 @@ namespace PluginCore.Managers
             ITabbedDocument current = PluginBase.MainForm.CurrentDocument;
             foreach (ITabbedDocument document in PluginBase.MainForm.Documents)
             {
-                if (document.IsEditable)
+                /* We need to check for virtual models, another more generic option would be 
+                 * Path.GetFileName(document.FileName).IndexOfAny(Path.GetInvalidFileNameChars()) == -1
+                 * But this one is used in more places */
+                if (document.IsEditable && !document.Text.StartsWith("[model] "))
                 {
                     String filename = Path.GetFullPath(document.FileName);
                     if (filename.StartsWith(oldPath))
@@ -111,13 +114,11 @@ namespace PluginCore.Managers
         /// </summary>
         public static ITabbedDocument FindDocument(String filename)
         {
-            Int32 count = PluginBase.MainForm.Documents.Length;
-            for (Int32 i = 0; i < count; i++)
+            foreach (ITabbedDocument document in PluginBase.MainForm.Documents)
             {
-                ITabbedDocument current = PluginBase.MainForm.Documents[i];
-                if (current.IsEditable && current.FileName == filename)
+                if (document.IsEditable && document.FileName == filename)
                 {
-                    return current;
+                    return document;
                 }
             }
             return null;
@@ -128,13 +129,11 @@ namespace PluginCore.Managers
         /// </summary>
         public static ITabbedDocument FindDocument(ScintillaControl sci)
         {
-            Int32 count = PluginBase.MainForm.Documents.Length;
-            for (Int32 i = 0; i < count; i++)
+            foreach (ITabbedDocument document in PluginBase.MainForm.Documents)
             {
-                ITabbedDocument current = PluginBase.MainForm.Documents[i];
-                if (current.IsEditable && current.SciControl == sci)
+                if (document.IsEditable && document.SciControl == sci)
                 {
-                    return current;
+                    return document;
                 }
             }
             return null;

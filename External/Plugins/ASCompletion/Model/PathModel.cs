@@ -8,6 +8,7 @@ using ASCompletion.Context;
 using PluginCore.Managers;
 using System.Windows.Forms;
 using PluginCore.Bridge;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace ASCompletion.Model
 {
@@ -462,25 +463,25 @@ namespace ASCompletion.Model
             if (!Directory.Exists(path)) return;
             explored.Add(path);
 
-            // convert classes
             try
             {
+                // convert classes
                 foreach (string mask in masks)
                 {
                     string[] files = Directory.GetFiles(path, mask);
                     if (files != null)
                         foreach (string file in files) foundFiles.Add(file);
                 }
+
+                // explore subfolders
+                string[] dirs = Directory.GetDirectories(path);
+                foreach (string dir in dirs)
+                {
+                    if (!explored.Contains(dir) && (File.GetAttributes(dir) & FileAttributes.Hidden) == 0)
+                        ExploreFolder(dir, masks, explored, foundFiles);
+                }
             }
             catch { }
-
-            // explore subfolders
-            string[] dirs = Directory.GetDirectories(path);
-            foreach (string dir in dirs)
-            {
-                if (!explored.Contains(dir) && (File.GetAttributes(dir) & FileAttributes.Hidden) == 0)
-                    ExploreFolder(dir, masks, explored, foundFiles);
-            }
         }
         #endregion
 
@@ -493,6 +494,24 @@ namespace ASCompletion.Model
                 watcher = null;
                 //TraceManager.Add("Release: " + Path);
             }
+        }
+
+        /// <summary>
+        /// Temporarily disables the watcher to release the lock on directories / files
+        /// </summary>
+        public void DisableWatcher()
+        {
+            if (watcher != null)
+                watcher.EnableRaisingEvents = false;
+        }
+
+        /// <summary>
+        /// Should be called after DisableWatcher()
+        /// </summary>
+        public void EnableWatcher()
+        {
+            if (watcher != null)
+                watcher.EnableRaisingEvents = true;
         }
 
         public bool HasFile(string fileName)
@@ -572,6 +591,59 @@ namespace ASCompletion.Model
                 files.Clear();
             }
             ReleaseWatcher();
+        }
+
+        public void Serialize(string path)
+        {
+            lock (lockObject)
+            {
+                try
+                {
+                    using (Stream stream = File.Open(path, FileMode.Create))
+                    {
+                        BinaryFormatter bin = new BinaryFormatter();
+                        bin.Serialize(stream, files);
+                    }
+                }
+                catch (Exception)
+                {
+                    TraceManager.AddAsync("Failed to serialize: " + path);
+                }
+            }
+        }
+
+        public bool Deserialize(string path)
+        {
+            try
+            {
+                using (Stream stream = File.Open(path, FileMode.Open))
+                {
+                    BinaryFormatter bin = new BinaryFormatter();
+                    var newFiles = (Dictionary<string, FileModel>)bin.Deserialize(stream);
+
+                    lock (lockObject)
+                    {
+                        foreach (string key in newFiles.Keys)
+                        {
+                            var aFile = newFiles[key];
+                            if (File.Exists(aFile.FileName))
+                            {
+                                var info = new FileInfo(aFile.FileName);
+                                if (info.LastWriteTime != aFile.LastWriteTime) aFile.OutOfDate = true;
+
+                                aFile.Context = Owner;
+                                files[key] = aFile;
+                            }
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                TraceManager.AddAsync("Failed to deserialize: " + path);
+                return false;
+            }
         }
     }
 }

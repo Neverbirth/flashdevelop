@@ -20,7 +20,7 @@ namespace FlashDebugger
     {
         // default metadata retry count 8 attempts per waitForMetadata() call * 5 calls
         public const int METADATA_RETRIES = 8 * 5;
-        public event TraceEventHandler TraceEvent;
+        public event TraceEventHandler  TraceEvent;
         public event DebuggerEventHandler DisconnectedEvent;
         public event DebuggerEventHandler PauseFailedEvent;
         public event DebuggerEventHandler StartedEvent;
@@ -153,8 +153,8 @@ namespace FlashDebugger
         private int m_UpdateDelay;
 
         // Session Properties
-        private int m_MetadataAttemptsPeriod;	// 1/4s per attempt
-        private int m_MetadataNotAvailable;		// counter for failures
+        private int m_MetadataAttemptsPeriod;   // 1/4s per attempt
+        private int m_MetadataNotAvailable;     // counter for failures
         private int m_MetadataAttempts;
         private int m_PlayerFullSupport;
 
@@ -199,12 +199,12 @@ namespace FlashDebugger
                 {
                     waitTilHalted();
                 }
-                catch (System.Exception) { }
+                catch (System.Exception){}
                 try
                 {
                     waitForMetaData();
                 }
-                catch (System.Exception) { }
+                catch (System.Exception){}
                 m_CurrentState = DebuggerState.Running;
                 m_Session.breakOnCaughtExceptions(PluginMain.settingObject.BreakOnThrow);
                 // now poke to see if the player is good enough
@@ -215,7 +215,7 @@ namespace FlashDebugger
                         TraceManager.AddAsync(TextHelper.GetString("Info.WarningNotAllCommandsSupported"));
                     }
                 }
-                catch (System.Exception) { }
+                catch (System.Exception){}
                 m_SuspendWaiting = false;
                 bool stop = false;
                 while (!stop)
@@ -283,7 +283,7 @@ namespace FlashDebugger
                                 System.Threading.Thread.Sleep(100);
                                 processEvents();
                             }
-                            catch (System.Threading.ThreadInterruptedException) { }
+                            catch (System.Threading.ThreadInterruptedException){}
                         }
                         m_SuspendWait.Reset();
 
@@ -343,9 +343,9 @@ namespace FlashDebugger
                             case 7://SuspendReason_.ScriptLoaded:
                                 try
                                 {
-                                    waitForMetaData();
-                                }
-                                catch (InProgressException) { }
+                                     waitForMetaData();
+                                } 
+                                catch (InProgressException) {}
                                 m_CurrentState = DebuggerState.PauseHalt;
 
                                 // refresh breakpoints
@@ -488,7 +488,7 @@ namespace FlashDebugger
                     {
                         System.Threading.Thread.Sleep(m_UpdateDelay);
                     }
-                    catch { }
+                    catch {}
                 }
             }
             catch (java.net.SocketException ex)
@@ -517,9 +517,6 @@ namespace FlashDebugger
                 m_CurrentState != DebuggerState.Stopped)
             {
                 m_Session.breakOnCaughtExceptions(PluginMain.settingObject.BreakOnThrow);
-
-                foreach (var ii in runningIsolates.Values)
-                    ii.i_Session.breakOnCaughtExceptions(PluginMain.settingObject.BreakOnThrow);
             }
         }
 
@@ -535,8 +532,8 @@ namespace FlashDebugger
                 correctVersion = false;
             }
             // reset session properties
-            m_MetadataAttemptsPeriod = 250;					// 1/4s per attempt
-            m_MetadataNotAvailable = 0;						// counter for failures
+            m_MetadataAttemptsPeriod = 250;                 // 1/4s per attempt
+            m_MetadataNotAvailable = 0;                     // counter for failures
             m_MetadataAttempts = METADATA_RETRIES;
             m_PlayerFullSupport = correctVersion ? 1 : 0;
             m_RequestStop = false;
@@ -564,7 +561,7 @@ namespace FlashDebugger
                 }
                 else
                 {
-                    m_Session.terminate();
+                    m_Session.terminate();                    
                 }
                 m_Session = null;
             }
@@ -631,7 +628,7 @@ namespace FlashDebugger
                         attempts--;
                         System.Threading.Thread.Sleep(period);
                     }
-                    catch (System.Threading.ThreadInterruptedException) { }
+                    catch (System.Threading.ThreadInterruptedException){}
                 }
             }
             // throw exception if still not ready
@@ -858,7 +855,7 @@ namespace FlashDebugger
                 {
                     System.Threading.Thread.Sleep(period);
                 }
-                catch (System.Threading.ThreadInterruptedException) { }
+                catch (System.Threading.ThreadInterruptedException){}
                 timeout -= period;
             }
         }
@@ -899,7 +896,7 @@ namespace FlashDebugger
             }
 
             if (e.isolateId == 1)
-                TraceManager.AddAsync(sb, 3);
+                TraceManager.AddAsync(sb.ToString(), 3);
             else
                 TraceManager.AddAsync("Worker " + e.isolateId + ": " + sb.ToString(), 3);
         }
@@ -920,7 +917,7 @@ namespace FlashDebugger
             System.Collections.IDictionary args = new System.Collections.Hashtable();
             args["size"] = e.swfSize.ToString("N0"); //$NON-NLS-1$
             sb.Append(replaceInlineReferences(TextHelper.GetString("Info.SizeAfterDecompression"), args));
-            TraceManager.AddAsync(sb);
+            TraceManager.AddAsync(sb.ToString());
         }
 
         /// <summary> Perform the tasks need for when a swf is unloaded
@@ -935,7 +932,7 @@ namespace FlashDebugger
             sb.Append(TextHelper.GetString("Info.LinePrefixWhenSwfUnloaded")); //$NON-NLS-1$
             sb.Append(' ');
             sb.Append(name);
-            TraceManager.AddAsync(sb);
+            TraceManager.AddAsync(sb.ToString());
         }
 
         /// <summary> Perform the tasks need for when an isolate is created
@@ -944,7 +941,7 @@ namespace FlashDebugger
         {
             IsolateSession i_Session = m_Session.getWorkerSession(e.isolate.getId());
 
-            i_Session.breakOnCaughtExceptions(PluginMain.settingObject.BreakOnThrow);
+            i_Session.breakOnCaughtExceptions(true);
 
             IsolateInfo ii = addRunningIsolate(e.isolate.getId());
             ii.i_Session = i_Session;
@@ -1171,7 +1168,7 @@ namespace FlashDebugger
 
         //public Value GetValue(int idValue)
         //{
-        //	return m_Session.getValue(idValue);
+        //  return m_Session.getValue(idValue);
         //}
 
         public void UpdateBreakpoints(List<BreakPointInfo> breakpoints)
@@ -1209,7 +1206,7 @@ namespace FlashDebugger
             {
                 // reverse loop to take latest loded swf first, and ignore old swf.
                 SwfInfo[] swfInfo = (i_Session != null) ? i_Session.getSwfs() : m_Session.getSwfs();
-                for (int swfC = swfInfo.Length - 1; swfC >= 0; swfC--)
+                for (int swfC = swfInfo.Length - 1; swfC >= 0; swfC--) 
                 {
                     SwfInfo swf = swfInfo[swfC];
                     if (swf == null) continue;
@@ -1317,4 +1314,3 @@ namespace FlashDebugger
     }
 
 }
-

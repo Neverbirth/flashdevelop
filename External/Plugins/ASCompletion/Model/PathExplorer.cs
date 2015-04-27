@@ -8,7 +8,6 @@ using ASCompletion.Context;
 using System.Windows.Forms;
 using System.Diagnostics;
 using PluginCore.Localization;
-using System.Runtime.Serialization.Formatters.Binary;
 using PluginCore.Utilities;
 using PluginCore.Helpers;
 using System.Text;
@@ -16,13 +15,13 @@ using ICSharpCode.SharpZipLib.Zip;
 
 namespace ASCompletion.Model
 {
-	/// <summary>
-	/// Deep classpath exploration & parsing
-	/// </summary>
-	public class PathExplorer
-	{
+    /// <summary>
+    /// Deep classpath exploration & parsing
+    /// </summary>
+    public class PathExplorer
+    {
         public delegate void ExplorationProgressHandler(string state, int value, int max);
-		public delegate void ExplorationDoneHandler(string path);
+        public delegate void ExplorationDoneHandler(string path);
 
         static public bool IsWorking
         {
@@ -74,12 +73,12 @@ namespace ASCompletion.Model
         }
 
         public event ExplorationProgressHandler OnExplorationProgress;
-		public event ExplorationDoneHandler OnExplorationDone;
+        public event ExplorationDoneHandler OnExplorationDone;
         public bool UseCache;
 
         private IASContext context;
         private PathModel pathModel;
-		private List<string> foundFiles;
+        private List<string> foundFiles;
         private List<string> explored;
         private string hashName;
         private char hiddenPackagePrefix;
@@ -104,8 +103,8 @@ namespace ASCompletion.Model
             }
         }
 
-		public void Run()
-		{
+        public void Run()
+        {
             lock (waiting)
             {
                 foreach (PathExplorer exp in waiting)
@@ -125,7 +124,7 @@ namespace ASCompletion.Model
                 explorerThread.Priority = ThreadPriority.Lowest;
                 explorerThread.Start();
             }
-		}
+        }
 
         private static void ExploreInBackground()
         {
@@ -166,7 +165,7 @@ namespace ASCompletion.Model
         /// Background search
         /// </summary>
         private void BackgroundRun()
-		{
+        {
             pathModel.Updating = true;
             try
             {
@@ -202,7 +201,7 @@ namespace ASCompletion.Model
                         if (File.Exists(cacheFileName))
                         {
                             NotifyProgress(TextHelper.GetString("Info.ParsingCache"), 0, 1);
-                            ASFileParser.ParseCacheFile(pathModel, cacheFileName, context);
+                            pathModel.Deserialize(cacheFileName);
                         }
                         else writeCache = true;
                         if (stopExploration || !pathModel.InUse) return;
@@ -224,23 +223,13 @@ namespace ASCompletion.Model
                         else if (File.Exists(cacheFileName)) File.Delete(cacheFileName);
 
                         if (pathModel.FilesCount > 0)
-                        {
-                            StringBuilder sb = new StringBuilder();
-                            pathModel.ForeachFile((model) =>
-                            {
-                                sb.Append("\n#file-cache ").Append(model.FileName).Append('\n');
-                                sb.Append(model.GenerateIntrinsic(true));
-                                return true;
-                            });
-                            string src = sb.ToString();
-                            FileHelper.WriteFile(cacheFileName, src, Encoding.UTF8);
-                        }
+                            pathModel.Serialize(cacheFileName);
                     }
                     catch { }
                 }
             }
             finally { pathModel.Updating = false; }
-		}
+        }
 
         private void ExtractFilesFromArchive()
         {
@@ -334,7 +323,7 @@ namespace ASCompletion.Model
             string pluginDir = Path.Combine(PathHelper.DataDir, "ASCompletion");
             string cacheDir = Path.Combine(pluginDir, "FileCache");
             string hashFileName = HashCalculator.CalculateSHA1(path);
-            return Path.Combine(cacheDir, hashFileName + "." + context.Settings.LanguageId.ToLower());
+            return Path.Combine(cacheDir, hashFileName + "." + context.Settings.LanguageId.ToLower() + ".bin");
         }
 
         private void NotifyProgress(string state, int value, int max)
@@ -359,10 +348,10 @@ namespace ASCompletion.Model
             return (ctx != null) ? ctx.GetFileModel(filename) : null;
         }
 
-		private void ExploreFolder(string path, string[] masks)
-		{
+        private void ExploreFolder(string path, string[] masks)
+        {
             if (stopExploration || !Directory.Exists(path)) return;
-			explored.Add(path);
+            explored.Add(path);
             Thread.Sleep(5);
 
             // The following try/catch is used to handle "There are no more files" IOException.
@@ -393,7 +382,7 @@ namespace ASCompletion.Model
                 }
             }
             catch { }
-		}
+        }
 
         private bool IgnoreDirectory(string dir)
         {
@@ -402,5 +391,5 @@ namespace ASCompletion.Model
             if (hiddenPackagePrefix != 0 && name[0] == hiddenPackagePrefix) return true;
             return false;
         }
-	}
+    }
 }

@@ -34,7 +34,9 @@ namespace ASClassWizard.Wizards
     {
         private string directoryPath;
         private Project project;
-        public const string REG_IDENTIFIER = "^[a-zA-Z_$][a-zA-Z0-9_$]*$";
+        public const string REG_IDENTIFIER_AS = "^[a-zA-Z_$][a-zA-Z0-9_$]*$";
+        // $ is not a valid char in haxe class names
+        public const string REG_IDENTIFIER_HAXE = "^[a-zA-Z_][a-zA-Z0-9_]*$";
 
         public AS3ClassWizard()
         {
@@ -68,11 +70,11 @@ namespace ASClassWizard.Wizards
             set { packageBox.Text = value; }
         }
 
-		public String StartupClassName
-		{
-			set { classBox.Text = value; }
-		}
-		
+        public String StartupClassName
+        {
+            set { classBox.Text = value; }
+        }
+        
         public string Directory
         {
             get { return this.directoryPath; }
@@ -97,7 +99,6 @@ namespace ASClassWizard.Wizards
                 if (project.Language == "haxe")
                 {
                     this.internalRadio.Text = "private";
-                    this.finalCheck.Enabled = false;
                     this.titleLabel.Text = TextHelper.GetString("Wizard.Label.NewHaxeClass");
                     this.Text = TextHelper.GetString("Wizard.Label.NewHaxeClass");
                 }
@@ -112,10 +113,14 @@ namespace ASClassWizard.Wizards
         private void ValidateClass()
         {
             string errorMessage = "";
-            if (getClassName() == "" || !Regex.Match(getClassName(), REG_IDENTIFIER, RegexOptions.Singleline).Success)
-            {
+            string regex = (project.Language == "haxe") ? REG_IDENTIFIER_HAXE : REG_IDENTIFIER_AS; 
+            if (getClassName() == "")
+                errorMessage = TextHelper.GetString("Wizard.Error.EmptyClassName");
+            else if (!Regex.Match(getClassName(), regex, RegexOptions.Singleline).Success)
                 errorMessage = TextHelper.GetString("Wizard.Error.InvalidClassName");
-            }
+            else if (project.Language == "haxe" && Char.IsLower(getClassName()[0]))
+                errorMessage = TextHelper.GetString("Wizard.Error.LowercaseClassName");
+
             if (errorMessage != "")
             {
                 okButton.Enabled = false;
@@ -170,18 +175,6 @@ namespace ASClassWizard.Wizards
         {
             this.classBox.Select();
             this.ValidateClass();
-        }
-
-        private void cancelButton_Click(object sender, EventArgs e)
-        {
-            this.DialogResult = DialogResult.Cancel;
-            this.Close();
-        }
-
-        private void okButton_Click(object sender, EventArgs e)
-        {
-            this.DialogResult = DialogResult.OK;
-            this.Close();
         }
 
         private void baseBrowse_Click(object sender, EventArgs e)

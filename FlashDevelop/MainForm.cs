@@ -161,7 +161,7 @@ namespace FlashDevelop
         private ContextMenuStrip editorMenu;
 
         /* Working Dir */
-        String workingDirectory = String.Empty;
+        private String workingDirectory = String.Empty;
 
         /* Form State */
         private FormState formState;
@@ -558,8 +558,8 @@ namespace FlashDevelop
         }
 
         /// <summary>
-		/// Creates a new empty document
-		/// </summary>
+        /// Creates a new empty document
+        /// </summary>
         public DockContent CreateEditableDocument(String file, String text, Int32 codepage)
         {
             try
@@ -583,8 +583,8 @@ namespace FlashDevelop
         }
 
         /// <summary>
-		/// Creates a floating panel for the plugin
-		/// </summary>
+        /// Creates a floating panel for the plugin
+        /// </summary>
         public DockContent CreateDockablePanel(Control ctrl, String guid, Image image, DockState defaultDockState)
         {
             try
@@ -616,7 +616,7 @@ namespace FlashDevelop
             {
                 if (this.Documents.Length == 0)
                 {
-                    this.New(null, null);
+                    this.SmartNew(null, null);
                     return null;
                 }
                 else return null;
@@ -644,13 +644,12 @@ namespace FlashDevelop
             }
             try
             {
-                Int32 count = this.Documents.Length;
-                for (Int32 i = 0; i < count; i++)
+                foreach (ITabbedDocument doc in this.Documents)
                 {
-                    if (this.Documents[i].IsEditable && this.Documents[i].FileName.ToUpper() == file.ToUpper())
+                    if (doc.IsEditable && doc.FileName.ToUpper() == file.ToUpper())
                     {
-                        this.Documents[i].Activate();
-                        return null;
+                        doc.Activate();
+                        return doc as DockContent;
                     }
                 }
             }
@@ -746,10 +745,11 @@ namespace FlashDevelop
                     File.Delete(appman);
                     this.refreshConfig = true;
                 }
-                // Apply appman path to PATH
+                // Apply FD dir and appman dir to PATH
                 String amPath = Path.Combine(PathHelper.ToolDir, "AppMan");
                 String oldPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
-                Environment.SetEnvironmentVariable("PATH", oldPath + ";" + amPath, EnvironmentVariableTarget.Process);
+                String newPath = oldPath + ";" + amPath + ";" + PathHelper.AppDir;
+                Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.Process);
                 // Watch for appman update notifications
                 this.amWatcher = new FileSystemWatcher(PathHelper.BaseDir, ".appman");
                 this.amWatcher.Changed += new FileSystemEventHandler(this.AppManUpdate);
@@ -861,6 +861,41 @@ namespace FlashDevelop
             this.processRunner.ProcessEnded += ProcessEnded;
             this.processRunner.Output += ProcessOutput;
             this.processRunner.Error += ProcessError;
+        }
+
+        /// <summary>
+        /// Checks for updates in specified schedule
+        /// </summary>
+        public void CheckForUpdates()
+        {
+            try
+            {
+                DateTime last = new DateTime(this.appSettings.LastUpdateCheck);
+                TimeSpan elapsed = DateTime.UtcNow.Subtract(last);
+                switch (this.appSettings.CheckForUpdates)
+                {
+                    case UpdateInterval.Weekly:
+                    {
+                        if (elapsed.TotalDays >= 7)
+                        {
+                            this.appSettings.LastUpdateCheck = DateTime.UtcNow.Ticks;
+                            UpdateDialog.Show(true);
+                        }
+                        break;
+                    }
+                    case UpdateInterval.Monthly:
+                    {
+                        if (elapsed.TotalDays >= 30)
+                        {
+                            this.appSettings.LastUpdateCheck = DateTime.UtcNow.Ticks;
+                            UpdateDialog.Show(true);
+                        }
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            catch { /* NO ERRORS PLEASE */ }
         }
 
         /// <summary>
@@ -1041,8 +1076,8 @@ namespace FlashDevelop
         #region Event Handlers
 
         /// <summary>
-		/// Checks the file changes and activates
-		/// </summary>
+        /// Checks the file changes and activates
+        /// </summary>
         private void OnMainFormActivate(Object sender, System.EventArgs e)
         {
             if (this.CurrentDocument == null) return;
@@ -1135,7 +1170,7 @@ namespace FlashDevelop
             {
                 NotifyEvent ne = new NotifyEvent(EventType.FileEmpty);
                 EventManager.DispatchEvent(this, ne);
-                if (!ne.Handled) this.New(null, null);
+                if (!ne.Handled) this.SmartNew(null, null);
             }
             /**
             * Apply the default loaded theme
@@ -1158,6 +1193,10 @@ namespace FlashDevelop
             * Initialize window and continue layout
             */
             this.InitializeWindow();
+            /**
+            * Check for updates when needed
+            */
+            this.CheckForUpdates();
         }
 
         /// <summary>
@@ -1196,7 +1235,7 @@ namespace FlashDevelop
             {
                 NotifyEvent fe = new NotifyEvent(EventType.FileEmpty);
                 EventManager.DispatchEvent(this, fe);
-                if (!fe.Handled) this.New(null, null);
+                if (!fe.Handled) this.SmartNew(null, null);
             }
             if (!e.Cancel)
             {
@@ -1370,7 +1409,7 @@ namespace FlashDevelop
             {
                 NotifyEvent ne = new NotifyEvent(EventType.FileEmpty);
                 EventManager.DispatchEvent(this, ne);
-                if (!ne.Handled) this.New(null, null);
+                if (!ne.Handled) this.SmartNew(null, null);
             }
         }
 
@@ -1440,7 +1479,17 @@ namespace FlashDevelop
             String[] files = Regex.Split(data.Substring(1, data.Length - 2), "\" \"");
             foreach (String file in files)
             {
-                if (File.Exists(file)) this.OpenEditableDocument(file);
+                if (File.Exists(file))
+                {
+                    DockContent doc = this.OpenEditableDocument(file);
+                    if (doc == null || Control.ModifierKeys == Keys.Control) return;
+                    DockContent drop = DocumentManager.FindDocument(sci) as DockContent;
+                    if (drop != null && drop.Pane != null)
+                    {
+                        doc.DockTo(drop.Pane, DockStyle.Fill, -1);
+                        doc.Activate();
+                    }
+                }
             }
         }
 
@@ -1922,8 +1971,8 @@ namespace FlashDevelop
         }
 
         /// <summary>
-		/// Closes all open documents with an option: exceptCurrent
-		/// </summary>
+        /// Closes all open documents with an option: exceptCurrent
+        /// </summary>
         public void CloseAllDocuments(Boolean exceptCurrent)
         {
             Int32 closeIndex = 0;
@@ -2056,8 +2105,8 @@ namespace FlashDevelop
         #region Click Handlers
 
         /// <summary>
-		/// Creates a new blank document
-		/// </summary>
+        /// Creates a new blank document
+        /// </summary>
         public void New(Object sender, EventArgs e)
         {
             String fileName = DocumentManager.GetNewDocumentName(null);
@@ -2669,12 +2718,10 @@ namespace FlashDevelop
         {
             ToolStripItem button = (ToolStripItem)sender;
             String file = ((ItemData)button.Tag).Tag;
-
             ((Form)PluginBase.MainForm).BeginInvoke((MethodInvoker)delegate
             {
                 OpenEditableDocument(file);
             });
-
             this.frInDocDialog.Show();
         }
 
@@ -2832,6 +2879,10 @@ namespace FlashDevelop
                                 fdpath += ".new";
                                 requiresRestart = true;
                             }
+                            else if (ext == ".dll" || ext == ".fdb" || ext == ".fdl")
+                            {
+                                requiresRestart = true;
+                            }
                             zipLog += "Extract: " + fdpath + "\r\n";
                             String dirPath = Path.GetDirectoryName(fdpath);
                             if (!Directory.Exists(dirPath)) Directory.CreateDirectory(dirPath);
@@ -2852,14 +2903,16 @@ namespace FlashDevelop
                         }
                     }
                     String finish = TextHelper.GetString("Info.ZipExtractDone");
+                    String restart = TextHelper.GetString("Info.RequiresRestart");
                     if (requiresRestart)
                     {
                         zipLog += "Restart required.\r\n";
-                        finish += "\n" + TextHelper.GetString("Info.RequiresRestart");
+                        if (!silentInstall) finish += "\n" + restart;
+                        else TraceManager.AddAsync(finish + "\r\n" + restart);
                     }
                     String logFile = Path.Combine(PathHelper.BaseDir, "Extensions.log");
                     File.AppendAllText(logFile, zipLog + "Done.\r\n\r\n", Encoding.UTF8);
-                    ErrorManager.ShowInfo(finish);
+                    if (!silentInstall) ErrorManager.ShowInfo(finish);
                 }
             }
             catch (Exception ex)
@@ -2935,14 +2988,16 @@ namespace FlashDevelop
                         }
                     }
                     String finish = TextHelper.GetString("Info.ZipRemoveDone");
+                    String restart = TextHelper.GetString("Info.RequiresRestart");
                     if (requiresRestart)
                     {
-                        zipLog += "Restart required.\r\n";
-                        finish += "\n" + TextHelper.GetString("Info.RequiresRestart");
+                        zipLog += "Restart required.\r\n";                        
+                        if (!silentRemove) finish += "\n" + restart;
+                        else TraceManager.AddAsync(finish + "\r\n" + restart);
                     }
                     String logFile = Path.Combine(PathHelper.BaseDir, "Extensions.log");
                     File.AppendAllText(logFile, zipLog + "Done.\r\n\r\n", Encoding.UTF8);
-                    ErrorManager.ShowInfo(finish);
+                    if (!silentRemove) ErrorManager.ShowInfo(finish);
                 }
             }
             catch (Exception ex)
@@ -2988,7 +3043,7 @@ namespace FlashDevelop
         /// </summary>
         public void CheckUpdates(Object sender, System.EventArgs e)
         {
-            UpdateDialog.Show();
+            UpdateDialog.Show(false);
         }
 
         /// <summary>
@@ -3330,7 +3385,22 @@ namespace FlashDevelop
             {
                 ScintillaControl sci = Globals.SciControl;
                 ToolStripItem button = (ToolStripItem)sender;
-                ScintillaManager.ChangeSyntax(((ItemData)button.Tag).Tag, sci);
+                string language = ((ItemData) button.Tag).Tag;
+                if (sci.ConfigurationLanguage.Equals(language))
+                    return; // already using this syntax
+
+                ScintillaManager.ChangeSyntax(language, sci);
+
+                string extension = sci.GetFileExtension();
+                if (!string.IsNullOrEmpty(extension))
+                {
+                    string title = TextHelper.GetString("Title.RememberExtensionDialog"); 
+                    string message = TextHelper.GetString("Info.RememberExtensionDialog"); 
+                    if (MessageBox.Show(message, title, MessageBoxButtons.YesNo) == DialogResult.Yes)
+                    {
+                        sci.SaveExtensionToSyntaxConfig(extension);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -3344,8 +3414,7 @@ namespace FlashDevelop
         public void SortLines(Object sender, System.EventArgs e)
         {
             ScintillaControl sci = Globals.SciControl;
-            Int32 position = sci.CurrentPos;
-            Int32 curLine = sci.LineFromPosition(position);
+            Int32 curLine = sci.LineFromPosition(sci.SelectionStart);
             Int32 endLine = sci.LineFromPosition(sci.SelectionEnd);
             List<String> lines = new List<String>();
             for (Int32 line = curLine; line < endLine + 1; ++line)
@@ -3354,14 +3423,12 @@ namespace FlashDevelop
             }
             lines.Sort(CompareLines);
             StringBuilder result = new StringBuilder();
-            string end = lines[lines.Count - 1];
-            foreach (String s in lines )
+            foreach (String s in lines)
             {
                 result.Append(s);
-                if (s != end) result.Append("\n");
             }
             Int32 selStart = sci.PositionFromLine(curLine);
-            Int32 selEnd = sci.PositionFromLine(endLine) + sci.GetLine(endLine).Length;
+            Int32 selEnd = sci.PositionFromLine(endLine) + sci.MBSafeTextLength(sci.GetLine(endLine));
             sci.SetSel(selStart, selEnd);
             sci.ReplaceSel(result.ToString());
         }
@@ -3372,8 +3439,7 @@ namespace FlashDevelop
         public void SortLineGroups(Object sender, System.EventArgs e)
         {
             ScintillaControl sci = Globals.SciControl;
-            Int32 position = sci.CurrentPos;
-            Int32 curLine = sci.LineFromPosition(position);
+            Int32 curLine = sci.LineFromPosition(sci.SelectionStart);
             Int32 endLine = sci.LineFromPosition(sci.SelectionEnd);
             List<List<String>> lineLists = new List<List<String>>();
             List<String> curList = new List<String>();
@@ -3381,9 +3447,10 @@ namespace FlashDevelop
             for (Int32 line = curLine; line < endLine + 1; ++line)
             {
                 String lineText = sci.GetLine(line);
-                if (CompareLines(lineText, "\r") == 0)
+                if (lineText.Trim() == "")
                 {
                     curList.Sort(CompareLines);
+                    curList.Add(lineText);
                     curList = new List<String>();
                     lineLists.Add(curList);
                     continue;
@@ -3392,17 +3459,15 @@ namespace FlashDevelop
             }
             curList.Sort(CompareLines);
             StringBuilder result = new StringBuilder();
-            List<String> end = lineLists[lineLists.Count - 1];
             foreach (List<String> l in lineLists)
             {
                 foreach (String s in l)
                 {
                     result.Append(s);
                 }
-                if (l != end) result.Append("\r");
             }
             Int32 selStart = sci.PositionFromLine(curLine);
-            Int32 selEnd = sci.PositionFromLine(endLine) + sci.GetLine(endLine).Length;
+            Int32 selEnd = sci.PositionFromLine(endLine) + sci.MBSafeTextLength(sci.GetLine(endLine));
             sci.SetSel(selStart, selEnd);
             sci.ReplaceSel(result.ToString());
         }
@@ -3830,12 +3895,6 @@ namespace FlashDevelop
         {
             try
             {
-                /*if (this.processRunner.IsRunning)
-                {
-                    String message = TextHelper.GetString("Info.ProcessAlreadyRunning");
-                    TraceManager.Add(message, (Int32)TraceType.Error);
-                    return;
-                }*/
                 ToolStripItem button = (ToolStripItem)sender;
                 String args = this.ProcessArgString(((ItemData)button.Tag).Tag);
                 Int32 position = args.IndexOf(';'); // Position of the arguments

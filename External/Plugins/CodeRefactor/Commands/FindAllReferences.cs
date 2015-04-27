@@ -18,7 +18,12 @@ namespace CodeRefactor.Commands
         private ASResult currentTarget;
         private Boolean outputResults;
         private Boolean ignoreDeclarationSource;
-        
+
+        /// <summary>
+        /// Gets or sets if searching is only performed on user defined classpaths
+        /// </summary>
+        public Boolean OnlySourceFiles { get; set; }
+
         /// <summary>
         /// The current declaration target that references are being found to.
         /// </summary>
@@ -76,7 +81,7 @@ namespace CodeRefactor.Commands
             UserInterfaceManager.ProgressDialog.Show();
             UserInterfaceManager.ProgressDialog.SetTitle(TextHelper.GetString("Info.FindingReferences"));
             UserInterfaceManager.ProgressDialog.UpdateStatusMessage(TextHelper.GetString("Info.SearchingFiles"));
-            RefactoringHelper.FindTargetInFiles(currentTarget, new FRProgressReportHandler(this.RunnerProgress), new FRFinishedHandler(this.FindFinished), true);
+            RefactoringHelper.FindTargetInFiles(currentTarget, new FRProgressReportHandler(this.RunnerProgress), new FRFinishedHandler(this.FindFinished), true, OnlySourceFiles, true);
         }
 
         /// <summary>
@@ -121,8 +126,8 @@ namespace CodeRefactor.Commands
                     if (fileEntries.Value.Count > 0 && System.IO.File.Exists(fileEntries.Key))
                     {
                         SearchMatch entry = fileEntries.Value[0];
-                        PluginBase.MainForm.OpenEditableDocument(fileEntries.Key, false);
-                        RefactoringHelper.SelectMatch(PluginBase.MainForm.CurrentDocument.SciControl, entry);
+                        var doc = (ITabbedDocument)PluginBase.MainForm.OpenEditableDocument(fileEntries.Key, false);
+                        RefactoringHelper.SelectMatch(doc.SciControl, entry);
                         break;
                     }
                 }
@@ -153,7 +158,7 @@ namespace CodeRefactor.Commands
                     // we have to open/reopen the entry's file
                     // there are issues with evaluating the declaration targets with non-open, non-current files
                     // we have to do it each time as the process of checking the declaration source can change the currently open file!
-                    ScintillaControl sci = this.AssociatedDocumentHelper.LoadDocument(currentFileName);
+                    ScintillaControl sci = this.AssociatedDocumentHelper.LoadDocument(currentFileName).SciControl;
                     // if the search result does point to the member source, store it
                     if (RefactoringHelper.DoesMatchPointToTarget(sci, match, target, this.AssociatedDocumentHelper))
                     {

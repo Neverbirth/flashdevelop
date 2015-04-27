@@ -1,15 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 using SourceControl.Sources;
 using System.Drawing;
 using System.Windows.Forms;
-using PluginCore;
 using ProjectManager.Controls.TreeView;
 using SourceControl.Actions;
-using System.IO;
-using System.Drawing.Imaging;
-using System.Reflection;
+using PluginCore.Helpers;
+using System;
 
 namespace SourceControl.Managers
 {
@@ -207,12 +203,15 @@ namespace SourceControl.Managers
 
             Image original = tree.ImageList.Images[node.ImageIndex];
             Bitmap composed = original.Clone() as Bitmap;
+            Int32 curSize = ScaleHelper.GetScale() > 1.5 ? 32 : 16;
             using (Graphics destination = Graphics.FromImage(composed))
             {
-                destination.DrawImage(iconSkin, new Rectangle(0, 0, 16, 16), 
-                    new Rectangle((int)status * 16, 0, 16, 16), GraphicsUnit.Pixel);
+                destination.DrawImage(iconSkin, 
+                    new Rectangle(0, 0, composed.Width, composed.Height), 
+                    new Rectangle((int)status * curSize, 0, curSize, curSize), GraphicsUnit.Pixel);
             }
             int index = tree.ImageList.Images.Count;
+            composed = (Bitmap)PluginCore.PluginBase.MainForm.ImageSetAdjust((Image)composed);
             tree.ImageList.Images.Add(composed);
             map[node.ImageIndex] = index;
             node.SelectedImageIndex = node.ImageIndex = index;

@@ -106,10 +106,15 @@ namespace AS3Context
             features.importKey = "import";
             features.typesPreKeys = new string[] { "import", "new", "typeof", "is", "as", "extends", "implements" };
             features.codeKeywords = new string[] { 
-                "class", "interface", "var", "function", "const", "new", "delete", "typeof", "is", "as", "return", 
+                "var", "function", "const", "new", "delete", "typeof", "is", "as", "return", 
                 "break", "continue", "if", "else", "for", "each", "in", "while", "do", "switch", "case", "default", "with",
                 "null", "true", "false", "try", "catch", "finally", "throw", "use", "namespace"
             };
+            features.accessKeywords = new string[] { 
+                "extern", "dynamic", "inline", "final", "public", "private", "protected", "internal", "static", "override"
+            };
+            features.declKeywords = new string[] { "var", "function", "const", "namespace", "get", "set" };
+            features.typesKeywords = new string[] { "import", "class", "interface" };
             features.varKey = "var";
             features.constKey = "const";
             features.functionKey = "function";
@@ -977,16 +982,20 @@ namespace AS3Context
             FlexShells.Instance.CheckAS3(CurrentFile, sdk, src);
         }
 
+        private void AddSquiggles(ScintillaNet.ScintillaControl sci, int line, int start, int end)
+        {
+            if (sci == null) return;
+            fileWithSquiggles = CurrentFile;
+            int position = sci.PositionFromLine(line) + start;
+            sci.AddHighlight(2, (int)ScintillaNet.Enums.IndicatorStyle.Squiggle, 0x000000ff, position, end - start);
+        }
+
         private void ClearSquiggles(ScintillaNet.ScintillaControl sci)
         {
             if (sci == null) return;
             try
             {
-                int es = sci.EndStyled;
-                int mask = (1 << sci.StyleBits);
-                sci.StartStyling(0, mask);
-                sci.SetStyling(sci.TextLength, 0);
-                sci.StartStyling(es, mask - 1);
+                sci.RemoveHighlights(2);
             }
             finally
             {
@@ -1029,19 +1038,6 @@ namespace AS3Context
             return sci.MBSafeTextLength(text.Substring(0, length));
         }
 
-        private void AddSquiggles(ScintillaNet.ScintillaControl sci, int line, int start, int end)
-        {
-            if (sci == null) return;
-            fileWithSquiggles = CurrentFile;
-            int position = sci.PositionFromLine(line) + start;
-            int es = sci.EndStyled;
-            int mask = 1 << sci.StyleBits;
-            sci.SetIndicStyle(0, (int)ScintillaNet.Enums.IndicatorStyle.Squiggle);
-            sci.SetIndicFore(0, 0x000000ff);
-            sci.StartStyling(position, mask);
-            sci.SetStyling(end - start, mask);
-            sci.StartStyling(es, mask - 1);
-        }
         #endregion
 
         #region class resolution

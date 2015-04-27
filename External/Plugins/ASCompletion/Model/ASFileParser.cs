@@ -353,9 +353,9 @@ namespace ASCompletion.Model
         /// Contributor: i.o.
         /// Description: Extracts from plain string a type classifier and type comment
         /// Example:
-        ///		typeDefinition: "Array/*String*/" or "Array[spaces]/*String*/" or "/*String*/Array"
-        ///		typeClassifier: "Array"
-        ///		typeComment: "String"
+        ///     typeDefinition: "Array/*String*/" or "Array[spaces]/*String*/" or "/*String*/Array"
+        ///     typeClassifier: "Array"
+        ///     typeComment: "String"
         /// </summary>
         public static bool ParseTypeDefinition(string typeDefinition, out string typeClassifier, out string typeComment)
         {
@@ -419,18 +419,6 @@ namespace ASCompletion.Model
     {
 
         #region public methods
-        static private PathModel cachedPath;
-        static private DateTime cacheLastWriteTime;
-
-        static public void ParseCacheFile(PathModel inPath, string file, IASContext inContext)
-        {
-            lock (typeof(ASFileParser))
-            {
-                cachedPath = inPath;
-                ParseFile(inContext.CreateFileModel(file));
-                cachedPath = null;
-            }
-        }
 
         static public FileModel ParseFile(FileModel fileModel)
         {
@@ -443,8 +431,6 @@ namespace ASCompletion.Model
                     src = PluginCore.Helpers.FileHelper.ReadFile(fileModel.FileName);
                     ASFileParser parser = new ASFileParser();
                     fileModel.LastWriteTime = File.GetLastWriteTime(fileModel.FileName);
-                    if (cachedPath != null)
-                        cacheLastWriteTime = fileModel.LastWriteTime;
                     parser.ParseSrc(fileModel, src);
                 }
                 // the file is not available (for the moment?)
@@ -538,7 +524,6 @@ namespace ASCompletion.Model
             //TraceManager.Add("Parsing " + Path.GetFileName(fileModel.FileName));
             model = fileModel;
             model.OutOfDate = false;
-            model.CachedModel = false;
             if (model.Context != null) features = model.Context.Features;
             if (features != null && features.hasModules)
                 model.Module = Path.GetFileNameWithoutExtension(model.FileName);
@@ -565,10 +550,6 @@ namespace ASCompletion.Model
                 return;
             int i = 0;
             line = 0;
-
-        // when parsing cache file including multiple files
-        resetParser:
-
             char c1;
             char c2;
             int matching = 0;
@@ -630,7 +611,7 @@ namespace ASCompletion.Model
             modifiers = 0;
             foundColon = false;
 
-            bool handleDirectives = features.hasDirectives || cachedPath != null;
+            bool handleDirectives = features.hasDirectives;
             bool inlineDirective = false;
 
             while (i < len)
@@ -802,29 +783,6 @@ namespace ASCompletion.Model
                                     matching = 0;
                                 }
                                 else inCode = true;
-
-                                // FD cache custom directive
-                                if (cachedPath != null && directive.StartsWith("file-cache "))
-                                {
-                                    // parsing done!
-                                    FinalizeModel();
-
-                                    // next model
-                                    string realFile = directive.Substring(11);
-                                    FileModel newModel = model.Context != null ? model.Context.CreateFileModel(realFile) : new FileModel(realFile);
-                                    newModel.LastWriteTime = cacheLastWriteTime;
-                                    newModel.CachedModel = true;
-                                    if (features != null && features.hasModules) 
-                                        newModel.Module = Path.GetFileNameWithoutExtension(realFile);
-                                    haXe = newModel.haXe;
-                                    if (!cachedPath.HasFile(realFile) && File.Exists(realFile))
-                                    {
-                                        newModel.OutOfDate = (File.GetLastWriteTime(realFile) > cacheLastWriteTime);
-                                        cachedPath.AddFile(newModel);
-                                    }
-                                    model = newModel;
-                                    goto resetParser; // loop
-                                }
                             }
                             else inCode = true;
                             commentLength = 0;
@@ -904,7 +862,7 @@ namespace ASCompletion.Model
 
                 if (c1 == 10 || c1 == 13)
                 {
-                    if (cachedPath == null) line++; // cache breaks line count
+                    line++;
                     if (c1 == 13 && i < len && ba[i] == 10) i++;
                 }
 
@@ -1677,10 +1635,10 @@ namespace ASCompletion.Model
             FinalizeModel();
 
             // post-filtering
-            if (cachedPath == null && model.HasFiltering && model.Context != null)
+            if (model.HasFiltering && model.Context != null)
                 model.Context.FilterSource(model);
 
-            //	Debug.WriteLine("out model: " + model.GenerateIntrinsic(false));
+            //  Debug.WriteLine("out model: " + model.GenerateIntrinsic(false));
         }
 
         private bool LookupRegex(ref string ba, ref int i)
@@ -1721,7 +1679,7 @@ namespace ASCompletion.Model
                 char c = ba[i];
                 if (c == 10 || c == 13)
                 {
-                    if (cachedPath == null) line++; // cache breaks line count
+                    line++;
                     if (c == 13 && i < len && ba[i + 1] == 10) i++;
                 }
                 if (inString == 0)
@@ -2326,14 +2284,7 @@ namespace ASCompletion.Model
                         break;
 
                     case FlagType.TypeDef:
-                        if (curModifiers == FlagType.Extends) // cached syntax
-                        {
-                            if (curClass != null)
-                            {
-                                curClass.ExtendsType = token;
-                            }
-                        }
-                        else if (inTypedef && curClass != null && prevToken.Text != "typedef")
+                        if (inTypedef && curClass != null && prevToken.Text != "typedef")
                         {
                             member = new MemberModel();
                             member.Comments = curComment;
