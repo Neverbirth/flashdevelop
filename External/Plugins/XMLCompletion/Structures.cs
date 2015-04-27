@@ -86,7 +86,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the name of the tag (without namespace)
         /// </summary>
-        public String Name
+        public virtual String Name
         {
             get { return name; }
         }
@@ -94,7 +94,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the label of the list item
         /// </summary>
-        public String Label
+        public virtual String Label
         {
             get { return label; }
         }
@@ -102,7 +102,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the description of the list item
         /// </summary>
-        public String Description
+        public virtual String Description
         {
             get { return "<" + tag + ">" + (uri != null ? " - " + uri : ""); }
         }
@@ -110,7 +110,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the icon of the list item
         /// </summary>
-        public Bitmap Icon
+        public virtual Bitmap Icon
         {
             get { return XMLComplete.HtmlTagIcon; }
         }
@@ -118,7 +118,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the value of the list item
         /// </summary>
-        public String Value
+        public virtual String Value
         {
             get { return tag; }
         }

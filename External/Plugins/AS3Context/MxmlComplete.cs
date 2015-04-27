@@ -1639,6 +1639,35 @@ namespace AS3Context
 
     #region completion list
 
+    public class MxmlTagItem : HtmlTagItem
+    {
+
+        protected string comments;
+        private CommentBlock cb;
+
+        public MxmlTagItem(string name, string comments, string tag, string uri) : base(name, tag, uri)
+        {
+            this.comments = comments;
+        }
+
+        public MxmlTagItem(string name, string comments, string tag) : base(name, tag)
+        {
+            this.comments = comments;
+        }
+
+        public override String Description
+        {
+            get
+            {
+                if (!ASContext.CommonSettings.SmartTipsEnabled || String.IsNullOrEmpty(comments)) return base.Description;
+                if (cb == null) cb = ASDocumentation.ParseComment(comments);
+                string tip = (UITools.Manager.ShowDetails) ? ASDocumentation.GetTipFullDetails(cb, null) : ASDocumentation.GetTipShortDetails(cb, null);
+                // remove paragraphs from comments
+                return base.Description + Environment.NewLine + ASDocumentation.RemoveHTMLTags(tip).Trim();
+            }
+        }
+    }
+
     public class MxmlAttributeItem : HtmlAttributeItem
     {
 
@@ -1664,7 +1693,7 @@ namespace AS3Context
         {
             get
             {
-                if (!ASContext.CommonSettings.SmartTipsEnabled || comments == null) return base.Description;
+                if (!ASContext.CommonSettings.SmartTipsEnabled || String.IsNullOrEmpty(comments)) return base.Description;
                 if (cb == null) cb = ASDocumentation.ParseComment(comments);
                 string tip = (UITools.Manager.ShowDetails) ? ASDocumentation.GetTipFullDetails(cb, null) : ASDocumentation.GetTipShortDetails(cb, null);
                 // remove paragraphs from comments
