@@ -258,7 +258,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the name of the item (without namespace)
         /// </summary>
-        public String Name
+        public virtual String Name
         {
             get { return name; }
         }
@@ -266,7 +266,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the label of the list item
         /// </summary>
-        public String Label
+        public virtual String Label
         {
             get { return this.label; }
         }
@@ -274,7 +274,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the description of the list item
         /// </summary>
-        public String Description
+        public virtual String Description
         {
             get { return this.desc; }
         }
@@ -282,7 +282,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the icon of the list item
         /// </summary>
-        public Bitmap Icon
+        public virtual Bitmap Icon
         {
             get { return this.icon; }
         }
@@ -290,7 +290,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the value of the list item
         /// </summary>
-        public String Value
+        public virtual String Value
         {
             get { return this.label; }
         }
@@ -298,7 +298,7 @@ namespace XMLCompletion
         /// <summary>
         /// Gets the class name of the attribute item
         /// </summary>
-        public String ClassName
+        public virtual String ClassName
         {
             get { return this.className; }
         }

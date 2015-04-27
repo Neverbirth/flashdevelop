@@ -890,7 +890,7 @@ namespace AS3Context
                                 mtype = member.Parameters[0].Type;
                             else mtype = null;
                         }
-                        mix.Add(new HtmlAttributeItem(member.Name, mtype, className, ns));
+                        mix.Add(new MxmlAttributeItem(member.Name, member.Comments, mtype, className, ns));
                     }
 
                 ExploreMetadatas(tmpClass, mix, excludes, ns, tagClass == tmpClass);
@@ -1348,7 +1348,7 @@ namespace AS3Context
                         break;
                 }
                 if (add != null && meta.Params.ContainsKey("name"))
-                    mix.Add(new HtmlAttributeItem(meta.Params["name"] + add, type, className, ns));
+                    mix.Add(new MxmlAttributeItem(meta.Params["name"] + add, meta.Comments, type, className, ns));
             }
         }
 
@@ -1663,6 +1663,41 @@ namespace AS3Context
     }
 
     #region completion list
+
+    public class MxmlAttributeItem : HtmlAttributeItem
+    {
+
+        protected string comments;
+        private CommentBlock cb;
+
+        public MxmlAttributeItem(string name, string comments, string type, string className, string ns) : base(name, type, className, ns)
+        {
+            this.comments = comments;
+        }
+
+        public MxmlAttributeItem(string name, string comments, string type, string className) : base(name, type, className)
+        {
+            this.comments = comments;
+        }
+
+        public MxmlAttributeItem(string name, string comments) : base(name)
+        {
+            this.comments = comments;
+        }
+
+        public override String Description
+        {
+            get
+            {
+                if (!ASContext.CommonSettings.SmartTipsEnabled || comments == null) return base.Description;
+                if (cb == null) cb = ASDocumentation.ParseComment(comments);
+                string tip = (UITools.Manager.ShowDetails) ? ASDocumentation.GetTipFullDetails(cb, null) : ASDocumentation.GetTipShortDetails(cb, null);
+                // remove paragraphs from comments
+                return base.Description + Environment.NewLine + ASDocumentation.RemoveHTMLTags(tip).Trim();
+            }
+        }
+    }
+
     /// <summary>
     /// Event member completion list item
     /// </summary>
