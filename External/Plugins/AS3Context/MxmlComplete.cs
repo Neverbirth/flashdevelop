@@ -111,7 +111,7 @@ namespace AS3Context
                 }
             else
             {
-                    MxmlResult found = ResolveAttribute(model, word, true);
+                    MxmlResult found = ResolveAttribute(model, word);
                     OpenDocumentToDeclaration(sci, found);
                 }
             }
@@ -389,7 +389,7 @@ namespace AS3Context
                             var gfModel = context.ResolveType(gfType, mxmlContext.Model);
                             if (gfModel.IsVoid()) return null;
 
-                            var result = ResolveAttribute(gfModel, parentName, false);
+                            var result = ResolveAttribute(gfModel, parentName);
                             if (result.ASResult == null) return null;
                             if (result.ASResult.Member != null)
                                 containedType = GetChildrenType(result.ASResult.Member, result.ASResult.InClass);
@@ -1525,7 +1525,7 @@ namespace AS3Context
             return name;
         }
 
-        private static MxmlResult ResolveAttribute(ClassModel model, string word, bool recheck)
+        private static MxmlResult ResolveAttribute(ClassModel model, string word)
         {
             MxmlResult result = new MxmlResult();
             ClassModel curClass = mxmlContext.Model.GetPublicClass();
@@ -1540,24 +1540,12 @@ namespace AS3Context
                     if ((member.Flags & flags) > 0 && (member.Access & acc) > 0
                         && member.Name == word)
                     {
-                        var asResult = new ASResult();
-                        asResult.InFile = tmpClass.InFile;
-                        if (member.LineFrom == 0 && recheck) // cached model, reparse
-                        {
-                            asResult.InFile.OutOfDate = true;
-                            asResult.InFile.Check();
-                            if (asResult.InFile.Classes.Count > 0)
+                        result.ASResult = new ASResult
                             {
-                                asResult.InClass = asResult.InFile.Classes[0];
-                                asResult.Member = asResult.InClass.Members.Search(member.Name, member.Flags, 0);
-                            }
-                        }
-                        else
-                        {
-                            asResult.Member = member;
-                            asResult.InClass = tmpClass;
-                        }
-                        result.ASResult = asResult;
+                                InFile = tmpClass.InFile,
+                                Member = member,
+                                InClass = tmpClass
+                            };
                         return result;
                     }
 
@@ -1569,26 +1557,13 @@ namespace AS3Context
                         if ((meta.Kind == ASMetaKind.Event || meta.Kind == ASMetaKind.Style) && meta.Params.TryGetValue("name", out name) && 
                             name == word)
                         {
-                            var asResult = new ASResult { InFile = tmpClass.InFile };
-                            if (meta.LineFrom == 0 && recheck) // cached model, reparse
-                            {
-                                asResult.InFile.OutOfDate = true;
-                                asResult.InFile.Check();
-                                if (asResult.InFile.Classes.Count > 0)
+                            var asResult = new ASResult
                                 {
-                                    asResult.InClass = asResult.InFile.Classes[0];
-                                    if (asResult.InClass.MetaDatas != null) 
-                                        foreach (var m in asResult.InClass.MetaDatas)
-                                            if (m.Kind == meta.Kind && meta.Params.TryGetValue("name", out name) && name == word) 
-                                                result.MetaTag = m;
-                                }
-                            }
-                            else
-                            {
-                                asResult.InClass = tmpClass;
-                                result.MetaTag = meta;
-                            }
+                                    InFile = tmpClass.InFile,
+                                    InClass = tmpClass
+                                };
 
+                            result.MetaTag = meta;
                             result.ASResult = asResult;
 
                             return result;
