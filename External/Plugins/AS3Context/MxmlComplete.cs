@@ -768,14 +768,15 @@ namespace AS3Context
         {
             ClassModel curClass = mxmlContext.Model.GetPublicClass();
             ClassModel tmpClass = tagClass;
-            FlagType mask = FlagType.Variable | FlagType.Setter;
+            FlagType mask = FlagType.Variable | FlagType.Setter | FlagType.Getter;
             Visibility acc = context.TypesAffinity(curClass, tmpClass);
             string containedType = null;
 
+            // Check for special MXML ancestors to see if we only allow some particular type of children
             if (tmpClass.InFile.Package != "mx.builtin" && tmpClass.InFile.Package != "fx.builtin")
             {
                 mix.Add(new HtmlAttributeItem("id", "String", null, ns));
-                
+
                 if (parentTag != null)
                 {
                     if (parentTag.Tag == "fx:Vector")
@@ -807,6 +808,7 @@ namespace AS3Context
             }
             else containedType = "Object";
 
+            // Add special attributes
             if (mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.Flex4 || mxmlContext.DocumentType == MxmlFilterContext.FlexDocumentType.FlexJs)
             {
                 // NOTE: Not sure at this moment if FlexJS does support all of these properties. It does at least some of them.
@@ -837,8 +839,9 @@ namespace AS3Context
                         mix.Add(new HtmlAttributeItem("type", "Class", "http://ns.adobe.com/mxml/2009"));
                 }
             }
-            
+
             string defaultProperty = null;
+            var propertyComments = new Dictionary<string, MxmlAttributeComment>();
             while (tmpClass != null && !tmpClass.IsVoid())
             {
                 string className = tmpClass.Name;
@@ -878,21 +881,50 @@ namespace AS3Context
                     }
                 }
 
+                // Get class members
                 foreach (MemberModel member in tmpClass.Members)
-                    if ((member.Flags & FlagType.Dynamic) > 0 && (member.Flags & mask) > 0
-                        && (member.Access & acc) > 0)
+                {
+                    if ((member.Flags & FlagType.Dynamic) > 0 && (member.Access & acc) > 0 && (member.Flags & mask) > 0)
                     {
-                        string mtype = member.Type;
-
+                        // We want to get the documentation, to make things harder the standard is to decorate getters although it's not mandatory, in fact, some framework types do not follow it.
+                        // This makes sense for normal AS completion tho. NOTE: The current normal AS completion misses documentation if the setter is the one with it
                         if ((member.Flags & FlagType.Setter) > 0)
                         {
-                            if (member.Parameters != null && member.Parameters.Count > 0)
-                                mtype = member.Parameters[0].Type;
-                            else mtype = null;
+                            MxmlAttributeComment attrc;
+                            if (propertyComments.TryGetValue(member.Name, out attrc))
+                            {
+                                if (attrc.Setter == null)
+                                {
+                                    attrc.Setter = member;
+                                    attrc.ClassName = className;
+                                }
+                            }
+                            else
+                            {
+                                propertyComments[member.Name] = new MxmlAttributeComment { Setter = member, ClassName = className };
+                            }
                         }
-                        mix.Add(new MxmlAttributeItem(member.Name, member.Comments, mtype, className, ns));
+                        else if ((member.Flags & FlagType.Getter) > 0 && !string.IsNullOrEmpty(member.Comments))
+                        {
+                            MxmlAttributeComment attrc;
+                            if (propertyComments.TryGetValue(member.Name, out attrc))
+                            {
+                                if (attrc.Comment == null) attrc.Comment = member.Comments;
+                            }
+                            else
+                            {
+                                propertyComments[member.Name] = new MxmlAttributeComment {Comment = member.Comments};
+                            }
+                        }
+                        else
+                        {
+                            string mtype = member.Type;
+                            mix.Add(new MxmlAttributeItem(member.Name, member.Comments, mtype, className, ns));
+                        }
                     }
+                }
 
+                // Get available Metatags
                 ExploreMetadatas(tmpClass, mix, excludes, ns, tagClass == tmpClass);
 
                 tmpClass = tmpClass.Extends;
@@ -900,6 +932,17 @@ namespace AS3Context
                     break;
                 // members visibility
                 acc = context.TypesAffinity(curClass, tmpClass);
+            }
+
+            foreach (var attrc in propertyComments.Values)
+            {
+                if (attrc.Setter == null) continue;
+                MemberModel member = attrc.Setter;
+                string mtype;
+                if (member.Parameters != null && member.Parameters.Count > 0)
+                    mtype = member.Parameters[0].Type;
+                else mtype = null;
+                mix.Add(new MxmlAttributeItem(member.Name, attrc.Comment ?? member.Comments, mtype, attrc.ClassName, ns));
             }
 
             return containedType;
@@ -1387,6 +1430,16 @@ namespace AS3Context
             }
             return null;
         }
+
+        #region Helper Classes
+        private class MxmlAttributeComment
+        {
+            public string Comment;
+            public MemberModel Setter;
+            public string ClassName;
+        }
+        #endregion
+
         #endregion
 
         #region context detection
