@@ -43,13 +43,13 @@ namespace AS3Context
             XMLContextTag ctag;
             if (style == TagStyle)
             {
-            int len = sci.TextLength;
-            while (pos < len)
-            {
-                char c = (char)sci.CharAt(pos);
-                if (c <= 32 || c == '/' || c == '>') break;
+                int len = sci.TextLength;
+                while (pos < len)
+                {
+                    char c = (char)sci.CharAt(pos);
+                    if (c <= 32 || c == '/' || c == '>') break;
                     pos++;
-            }
+                }
             }
             ctag = XMLComplete.GetXMLContextTag(sci, pos);
             if (ctag.Name == null) return true;
@@ -93,7 +93,8 @@ namespace AS3Context
                     word = sci.GetWordFromPosition(pos);
                     if (attrParts.Length > 1 && word == attrParts[1]) hasDot = true;
                     else word = attrParts[0];
-                } else 
+                }
+                else
                     while (pos >= 0)
                     {
                         char c = (char)sci.CharAt(pos);
@@ -101,7 +102,7 @@ namespace AS3Context
                         {
                             hasDot = true;
                             break;
-            }
+                        }
                         if (c <= 32 || c == '<' || c == ':') break;
                         pos--;
                     }
@@ -109,8 +110,8 @@ namespace AS3Context
                 {
                     OpenDocumentToDeclaration(sci, new MxmlResult {State = word});
                 }
-            else
-            {
+                else
+                {
                     MxmlResult found = ResolveAttribute(model, word);
                     OpenDocumentToDeclaration(sci, found);
                 }
@@ -382,7 +383,7 @@ namespace AS3Context
                     }
                     else
                     {
-                        var gfTag = GetParentTag(parentTag.Start, false);;
+                        var gfTag = GetParentTag(parentTag.Start, false);
                         if (gfTag != null)
                         {
                             var gfType = ResolveType(mxmlContext, gfTag.Tag);
@@ -590,7 +591,7 @@ namespace AS3Context
                 // cleanup and show list
                 mix.Sort(new MXMLListItemComparer());
                 string previous = null;
-                    items = new List<ICompletionListItem>();
+                items = new List<ICompletionListItem>();
                 foreach (ICompletionListItem item in mix)
                 {
                     if (previous == item.Label) continue;
@@ -637,7 +638,7 @@ namespace AS3Context
                 CompletionList.MinWordLength = 0;
             }
             else if (style == TagStyle)
-                {
+            {
                 var builder = new StringBuilder();
                 char c = (char)sci.CharAt(--pos);
                 while (!char.IsWhiteSpace(c) && c != '<' && c != '/')
@@ -744,7 +745,7 @@ namespace AS3Context
             else
             {
                 mix = GetTagAttributeValues(tagClass, null, currentAttribute.Split('.')[0]);
-            if (mix == null || mix.Count == 0) return true;
+                if (mix == null || mix.Count == 0) return true;
                 mix.Sort(new MXMLListItemComparer());
             }
 
@@ -1375,8 +1376,8 @@ namespace AS3Context
                 {
                     case ASMetaKind.Event: add = ":e"; break;
                     case ASMetaKind.Style:
-                            add = ":s";
-                            if (meta.Params == null || !meta.Params.TryGetValue("type", out type)) type = "Object";
+                        add = ":s";
+                        if (meta.Params == null || !meta.Params.TryGetValue("type", out type)) type = "Object";
                         break;
                     case ASMetaKind.Effect:
                         add = ":x";
@@ -1594,11 +1595,11 @@ namespace AS3Context
                         && member.Name == word)
                     {
                         result.ASResult = new ASResult
-                            {
-                                InFile = tmpClass.InFile,
-                                Member = member,
-                                InClass = tmpClass
-                            };
+                        {
+                            InFile = tmpClass.InFile,
+                            Member = member,
+                            InClass = tmpClass
+                        };
                         return result;
                     }
 
@@ -1611,10 +1612,10 @@ namespace AS3Context
                             name == word)
                         {
                             var asResult = new ASResult
-                                {
-                                    InFile = tmpClass.InFile,
-                                    InClass = tmpClass
-                                };
+                            {
+                                InFile = tmpClass.InFile,
+                                InClass = tmpClass
+                            };
 
                             result.MetaTag = meta;
                             result.ASResult = asResult;
