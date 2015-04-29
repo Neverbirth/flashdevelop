@@ -695,7 +695,7 @@ namespace AS3Context
 
                 if (mix.Count == 0) return;
 
-                if (mix.Count == MxmlFilter.GetNamespaces().Count)
+                if (mix.Count == MxmlFilter.GetCatalogs().Count)
                     tokenContext = attrValue;
 
                 List<ICompletionListItem> items = new List<ICompletionListItem>();
@@ -739,7 +739,7 @@ namespace AS3Context
 
                 if (mix.Count == 0) return true;
 
-                if (mix.Count == MxmlFilter.GetNamespaces().Count || steps.Length == 1)
+                if (mix.Count == MxmlFilter.GetCatalogs().Count || steps.Length == 1)
                     tokenContext = attrValue;
             }
             else
@@ -1289,7 +1289,7 @@ namespace AS3Context
             var mix = new List<ICompletionListItem>();
 
             // Decided to add available namespaces always
-            foreach (string ns in MxmlFilter.GetNamespaces())
+            foreach (string ns in MxmlFilter.GetCatalogs().Keys)
                 mix.Add(new MemberItem(new MemberModel(ns, ns, FlagType.Import, 0)));
             mix.Sort(new MXMLListItemComparer());
 
@@ -1473,6 +1473,7 @@ namespace AS3Context
             parentTag = GetParentTag(tagContext.Position, false);
 
             // rebuild tags cache?
+            // NOTE: This cache misses cases like new class names, or having the same amount of classes even if they are different. Could we use some update timestamp?
             string sum = "" + context.GetAllProjectClasses().Count;
             foreach (string uri in mxmlContext.Namespaces.Values)
                 sum += uri;
@@ -1509,17 +1510,23 @@ namespace AS3Context
         private static void GetAllTags()
         {
             Dictionary<string, string> nss = mxmlContext.Namespaces;
+            Dictionary<string, MxmlCatalog> allCatalogs = MxmlFilter.GetCatalogs();
             MemberList allClasses = context.GetAllProjectClasses();
             Dictionary<string, string> packages = new Dictionary<string, string>();
+            Dictionary<string, MxmlCatalog> catalogs = new Dictionary<string, MxmlCatalog>();
+            
             allTags = new Dictionary<string, List<string>>();
 
-            foreach (string key in nss.Keys)
+            foreach (var entry in nss)
             {
-                string uri = nss[key];
+                string uri = entry.Value;
+                MxmlCatalog cat;
                 if (uri.EndsWith(".*"))
-                    packages[uri.Substring(0, uri.LastIndexOf('.') + 1)] = key;
+                    packages[uri.Substring(0, uri.LastIndexOf('.') + 1)] = entry.Key;
                 else if (uri == "*")
-                    packages["*"] = key;
+                    packages["*"] = entry.Key;
+                else if (allCatalogs.TryGetValue(uri, out cat))
+                    catalogs[entry.Key] = cat;
             }
 
             foreach (MemberModel model in allClasses)
@@ -1534,19 +1541,29 @@ namespace AS3Context
                 p = model.Type.LastIndexOf('.');
                 string pkg = model.Type.Substring(0, p + 1);
                 if (pkg == "") pkg = "*";
-                if (packages.ContainsKey(pkg))
+                string ns;
+                if (packages.TryGetValue(pkg, out ns))
                 {
-                    string ns = packages[pkg];
-                    if (!allTags.ContainsKey(ns)) allTags.Add(ns, new List<string>());
-                    allTags[ns].Add(model.Name.Substring(p + 1));
+                    List<String> nsTypes;
+                    if (!allTags.TryGetValue(ns, out nsTypes))
+                    {
+                        nsTypes = new List<string>();
+                        allTags.Add(ns, nsTypes);
+                    }
+                    nsTypes.Add(model.Name.Substring(p + 1));
                 }
             }
 
-            foreach (MxmlCatalog cat in mxmlContext.Catalogs)
+            foreach (var catEntry in catalogs)
             {
-                List<string> cls = allTags.ContainsKey(cat.NS) ? allTags[cat.NS] : new List<string>();
-                cls.AddRange(cat.Keys);
-                allTags[cat.NS] = cls;
+                List<string> cls;
+                string ns = catEntry.Key;
+                if (!allTags.TryGetValue(ns, out cls))
+                {
+                    cls = new List<string>();
+                    allTags[ns] = cls;
+                }
+                cls.AddRange(catEntry.Value.Keys);
             }
         }
 
@@ -1567,15 +1584,11 @@ namespace AS3Context
             if (uri.EndsWith(".*"))
                 return uri.Substring(0, uri.Length - 1) + name;
 
-            if (uri == MxmlFilter.BETA_MX)
-                uri = MxmlFilter.OLD_MX;
-
-            foreach (MxmlCatalog cat in ctx.Catalogs)
-            {
-                string type;
-                if (cat.URI == uri && cat.TryGetValue(name, out type))
-                    return type;
-            }
+            MxmlCatalog cat;
+            string type;
+            if (MxmlFilter.GetCatalogs().TryGetValue(uri, out cat) && cat.TryGetValue(name, out type))
+                return type;
+            
             return name;
         }
 

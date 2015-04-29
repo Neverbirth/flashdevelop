@@ -25,7 +25,6 @@ namespace AS3Context
         }
 
         public Dictionary<string, string> Namespaces = new Dictionary<string, string>();
-        public List<MxmlCatalog> Catalogs = new List<MxmlCatalog>();
         public List<MxmlContextBase> Components;
         public FileModel Model;
 
@@ -45,7 +44,7 @@ namespace AS3Context
                             _documentType = FlexDocumentType.FlexJs;
                         else if (Namespaces.TryGetValue("fx", out nsUri) && nsUri == "http://ns.adobe.com/mxml/2009")
                             _documentType = FlexDocumentType.Flex4;
-                        else if (Namespaces.TryGetValue("mx", out nsUri) && (nsUri == MxmlFilter.OLD_MX || nsUri == MxmlFilter.BETA_MX))
+                        else if (Namespaces.TryGetValue("mx", out nsUri) && nsUri == MxmlFilter.OLD_MX)
                             _documentType = FlexDocumentType.Flex3;
                     }
                 }
@@ -97,9 +96,9 @@ namespace AS3Context
         static public string BETA_MX = "library://ns.adobe.com/flex/halo";
         static public string NEW_MX = "library://ns.adobe.com/flex/mx";
 
-        static private List<MxmlCatalog> catalogs = new List<MxmlCatalog>();
+        // Filtered global catalog list without duplicates. We previously stored the raw list, but there was or is no use for it.
+        static private Dictionary<string, MxmlCatalog> catalogs = new Dictionary<string, MxmlCatalog>();
         static private Dictionary<string, MxmlCatalogs> archive = new Dictionary<string, MxmlCatalogs>();
-        static private HashSet<string> namespaces = new HashSet<string>();
 
         /// <summary>
         /// Reset catalogs for new classpath definition
@@ -107,7 +106,6 @@ namespace AS3Context
         static public void ClearCatalogs()
         {
             catalogs.Clear();
-            namespaces.Clear();
         }
 
         /// <summary>
@@ -133,7 +131,7 @@ namespace AS3Context
                     if (cat.TimeStamp == info.LastWriteTime)
                     {
                         if (cat.Count > 0)
-                            catalogs.AddRange(cat.Values);
+                            AddCatalogs(cat.Values);
                         return;
                     }
                 }
@@ -143,7 +141,7 @@ namespace AS3Context
                 cat.TimeStamp = info.LastWriteTime;
                 archive[file] = cat;
                 if (cat.Count > 0)
-                    catalogs.AddRange(cat.Values);
+                    AddCatalogs(cat.Values);
             }
             catch (XmlException ex) { Console.WriteLine(ex.Message); }
             catch (Exception) { }
@@ -156,7 +154,7 @@ namespace AS3Context
         {
             MxmlCatalogs cat = archive[file];
             if (cat.Count > 0)
-                catalogs.AddRange(cat.Values);
+                AddCatalogs(cat.Values);
         }
 
         /// <summary>
@@ -171,16 +169,13 @@ namespace AS3Context
                 FileInfo info = new FileInfo(file);
                 MxmlCatalogs cat;
                 
-                if (!string.IsNullOrEmpty(uri) && !namespaces.Contains(uri))
-                    namespaces.Add(uri);
-
                 if (archive.ContainsKey(file))
                 {
                     cat = archive[file];
                     if (cat.TimeStamp == info.LastWriteTime)
                     {
                         if (cat.Count > 0)
-                            catalogs.AddRange(cat.Values);
+                            AddCatalogs(cat.Values);
                         return;
                     }
                 }
@@ -190,15 +185,34 @@ namespace AS3Context
                 cat.Read(file, null, uri);
                 archive[file] = cat;
                 if (cat.Count > 0)
-                    catalogs.AddRange(cat.Values);
+                    AddCatalogs(cat.Values);
             }
             catch (XmlException ex) { Console.WriteLine(ex.Message); }
             catch (Exception) { }
         }
 
-        static public HashSet<string> GetNamespaces()
+        static public Dictionary<string, MxmlCatalog> GetCatalogs()
         {
-            return namespaces;
+            return catalogs;
+        }
+
+        static private void AddCatalogs(IEnumerable<MxmlCatalog> collection)
+        {
+            foreach (var entry in collection)
+            {
+                MxmlCatalog existingCat;
+                if (!catalogs.TryGetValue(entry.URI, out existingCat))
+                {
+                    catalogs[entry.URI] = entry;
+                }
+                else
+                {
+                    foreach (var couple in entry)
+                    {
+                        existingCat[couple.Key] = couple.Value;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -566,21 +580,10 @@ namespace AS3Context
                 if (name.StartsWith("xmlns"))
                 {
                     string[] qname = name.Split(':');
+                    if (value == BETA_MX) value = OLD_MX;
                     if (qname.Length == 1) ctx.Namespaces["*"] = value;
                     else ctx.Namespaces[qname[1]] = value;
                 }
-            }
-            // find catalogs
-            foreach (string ns in ctx.Namespaces.Keys)
-            {
-                string uri = ctx.Namespaces[ns];
-                if (uri == BETA_MX) uri = OLD_MX;
-                foreach (MxmlCatalog cat in catalogs)
-                    if (cat.URI == uri)
-                    {
-                        cat.NS = ns;
-                        ctx.Catalogs.Add(cat);
-                    }
             }
         }
 
