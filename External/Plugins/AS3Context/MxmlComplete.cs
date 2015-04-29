@@ -24,7 +24,7 @@ namespace AS3Context
         internal const int AttributeValueStyle = 6;
         internal const int AttributeEqualStyle = 8;
 
-        static protected readonly Regex re_lastDot =
+        static protected internal readonly Regex re_lastDot =
             new Regex("\\.[^<]", RegexOptions.RightToLeft | RegexOptions.Compiled);
 
         static public bool IsDirty;
@@ -315,14 +315,14 @@ namespace AS3Context
                         foreach (string tag in allTags[ns])
                         {
                             if (ns == "*") mix.Add(new HtmlTagItem(tag, tag));
-                            else mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                            else mix.Add(new LazyMxmlTagItem(tag, ns, uri));
                         }
                     else
                     {
                         var containedTypeModel = context.ResolveType(containedType, mxmlContext.Model);
                         if ((containedTypeModel.Flags & FlagType.Final) > 0)
                             foreach (string tag in allTags[ns].Where(t => ResolveType(mxmlContext, ns, t) == containedTypeModel.QualifiedName))
-                                mix.Add(new HtmlTagItem(tag, (ns == "*" ? tag : ns + ":" + tag), uri));
+                                mix.Add(new LazyMxmlTagItem(tag, ns, uri));
                         else
                             foreach (string tag in allTags[ns])
                             {
@@ -334,8 +334,9 @@ namespace AS3Context
                                     package = cname.Substring(0, m.Index);
                                     cname = cname.Substring(m.Index + 1);
                                 }
-                                if (containedTypeModel.IsAssignableFrom(context.GetModel(package, cname, string.Empty)))
-                                    mix.Add(new HtmlTagItem(tag, (ns == "*" ? tag : ns + ":" + tag), uri));
+                                var model = context.GetModel(package, cname, string.Empty);
+                                if (containedTypeModel.IsAssignableFrom(model))
+                                    mix.Add(new MxmlTagItem(tag, model.Comments, (ns == "*" ? tag : ns + ":" + tag), uri));
                             }
                     }
                 }
@@ -479,13 +480,13 @@ namespace AS3Context
             {
                 if (containedType == "Object")
                     foreach (string tag in allTags[ns])
-                        mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                        mix.Add(new LazyMxmlTagItem(tag, ns, uri));
                 else
                 {
                     var containedTypeModel = context.ResolveType(containedType, mxmlContext.Model);
                     if ((containedTypeModel.Flags & FlagType.Final) > 0)
                         foreach (string tag in allTags[ns].Where(t => ResolveType(mxmlContext, ns, t) == containedTypeModel.QualifiedName))
-                            mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                            mix.Add(new LazyMxmlTagItem(tag, ns, uri));
                     else
                         foreach (string tag in allTags[ns])
                         {
@@ -497,8 +498,9 @@ namespace AS3Context
                                 package = cname.Substring(0, m.Index);
                                 cname = cname.Substring(m.Index + 1);
                             }
-                            if (containedTypeModel.IsAssignableFrom(context.GetModel(package, cname, string.Empty)))
-                                mix.Add(new HtmlTagItem(tag, ns + ":" + tag, uri));
+                            var model = context.GetModel(package, cname, string.Empty);
+                            if (containedTypeModel.IsAssignableFrom(model))
+                                mix.Add(new MxmlTagItem(tag, model.Comments, ns + ":" + tag, uri));
                         }
                 }
             }
@@ -1731,6 +1733,47 @@ namespace AS3Context
                 string tip = (UITools.Manager.ShowDetails) ? ASDocumentation.GetTipFullDetails(cb, null) : ASDocumentation.GetTipShortDetails(cb, null);
                 // remove paragraphs from comments
                 return base.Description + Environment.NewLine + ASDocumentation.RemoveHTMLTags(tip).Trim();
+            }
+        }
+    }
+
+    public class LazyMxmlTagItem : MxmlTagItem
+    {
+
+        protected string ns;
+        private bool modelResolved;
+
+        public LazyMxmlTagItem(string name, string ns, string uri)
+            : base(name, null, ns == "*" ? name : ns + ":" + name, uri)
+        {
+            this.ns = ns;
+        }
+
+        public LazyMxmlTagItem(string name, string ns)
+            : base(name, null, ns == "*" ? name : ns + ":" + name)
+        {
+            this.ns = ns;
+        }
+
+        public override String Description
+        {
+            get
+            {
+                if (ASContext.CommonSettings.SmartTipsEnabled && !modelResolved)
+                {
+                    string cname = MxmlComplete.ResolveType(MxmlComplete.mxmlContext, ns, Name);
+                    string package = string.Empty;
+                    Match m = MxmlComplete.re_lastDot.Match(cname);
+                    if (m.Success)
+                    {
+                        package = cname.Substring(0, m.Index);
+                        cname = cname.Substring(m.Index + 1);
+                    }
+                    var model = MxmlComplete.context.GetModel(package, cname, string.Empty);
+                    comments = model.Comments;
+                    modelResolved = true;
+                }
+                return base.Description;
             }
         }
     }
