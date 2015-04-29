@@ -983,13 +983,13 @@ namespace AS3Context
                                     mtype = member.Parameters[0].Type;
                                 else mtype = null;
 
-                                if (!hasGetterSetter)
+                                if (!hasGetterSetter && (member.MetaDatas == null || member.MetaDatas.Count == 0))
                                 {
                                     hasGetterSetter = true;
                                     setterType = mtype;
                                     continue;
                                 }
-                                return GetAutoCompletionValuesFromInspectable(mtype, metas);
+                                return GetAutoCompletionValuesFromInspectable(mtype, metas ?? member.MetaDatas);
                             }
                             else if ((member.Flags & FlagType.Getter) > 0)
                             {
