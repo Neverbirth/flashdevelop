@@ -31,6 +31,9 @@ namespace AS3Context
         static public Context context;
         static public MxmlFilterContext mxmlContext;
 
+        //TODO: Remove with new completion list
+        private static string attrFile;
+
         #region shortcuts
         public static bool GotoDeclaration()
         {
@@ -293,6 +296,8 @@ namespace AS3Context
         /// <returns></returns>
         static public bool HandleElement(object data)
         {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             if (!GetContext(data)) return false;
 
             if (!string.IsNullOrEmpty(tagContext.Name) && tagContext.Name.IndexOf(':') > 0)
@@ -461,6 +466,8 @@ namespace AS3Context
 
         static public bool HandleNamespace(object data)
         {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             if (!GetContext(data) || string.IsNullOrEmpty(tagContext.Name))
                 return false;
 
@@ -525,6 +532,8 @@ namespace AS3Context
 
         static public bool HandleElementClose(object data)
         {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             if (!GetContext(data)) return false;
 
             if (tagContext.Closing) return false;
@@ -559,6 +568,8 @@ namespace AS3Context
 
         static public bool HandleAttribute(object data)
         {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             if (!GetContext(data)) return false;
 
             string type = ResolveType(mxmlContext, tagContext.Name);
@@ -567,7 +578,7 @@ namespace AS3Context
 
             var dotFound = false;
             var src = tagContext.Tag;
-            for (var i = tagContext.Tag.Length - 1; i >= 0; i--)
+            for (var i = src.Length - 1; i >= 0; i--)
             {
                 char c = src[i];
                 if (char.IsWhiteSpace(c)) break;
@@ -610,18 +621,115 @@ namespace AS3Context
             }
 
             if (items.Count == 0) return true;
+            CompletionList.OnInsert += CompletionList_OnAttributeInsert;
+            // TODO: Replace with hidden event
+            CompletionList.OnCancel += CompletionList_OnAttributeInsert;
+            attrFile = PluginBase.MainForm.CurrentDocument.FileName;
             if (!string.IsNullOrEmpty(tokenContext)) CompletionList.Show(items, false, tokenContext);
             else CompletionList.Show(items, true);
             CompletionList.MinWordLength = 0;
             return true;
         }
 
+        static private void CompletionList_OnAttributeInsert(ScintillaNet.ScintillaControl sender, int position, string text, char trigger, ICompletionListItem item)
+        {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
+            if (trigger == '\n' && mxmlContext != null && mxmlContext.Model != null && sender.ConfigurationLanguage == "xml" && PluginBase.MainForm.CurrentDocument.FileName == attrFile)
+            {
+                int pos = position + sender.MBSafeTextLength(text);
+
+                int len = sender.Length;
+                int i = pos;
+                // 0: Initial, 1: Space, 2: =, 3: =", 4: Wrong
+                int state = 0;
+                while (i < len)
+                {
+                    char c = (char)sender.CharAt(i);
+                    if (char.IsWhiteSpace(c))
+                    {
+                        if (state == 0)
+                            state = 1;
+                    }
+                    else if (c == '=')
+                    {
+                        if (state < 2)
+                        {
+                            pos = i + 1;
+                            state = 2;
+                        }
+                        else
+                            break;
+                    }
+                    else if (c == '\"' || c == '\'')
+                    {
+                        if (state == 2)
+                        {
+                            pos = i + 1;
+                            state = 3;
+                        }
+                        else if (state == 0)
+                            state = 4;
+                        break;
+                    }
+                    else if (c == '/' || c == '>')
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        if (state == 0)
+                            state = 4;
+                        break;
+                    }
+                    i++;
+                }
+
+                if (state < 2)
+                {
+                    sender.InsertText(pos, "=\"\"");
+                    pos += 2;
+                    sender.SetSel(pos, pos);
+
+
+                    i = position;
+                    if (sender.CharAt(position - 1) == '.')
+                        text = MxmlFilter.GetCurrentAttributeName(sender, ref i);
+
+                    List<ICompletionListItem> items = GetAutoCompletionValuesFromAttribute(text, "");
+
+                    if (items == null) return;
+
+                    CompletionList.Show(items, true);
+                    CompletionList.MinWordLength = 0;
+                }
+                else if (state != 4)
+                {
+                    if (state == 2)
+                    {
+                        sender.InsertText(pos, "\"");
+                        pos++;
+                    }
+                    sender.SetSel(pos, pos);
+                }
+            }
+        }
+
         static internal void OnChar(ScintillaNet.ScintillaControl sci, int value)
         {
             if (value != '.') return;
 
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             int pos = sci.CurrentPos - 2;
             int style = sci.BaseStyleAt(pos);
+
+            if (style == BlankStyle)
+            {
+                // Retry in case sci hasn't refreshed yet
+                sci.Colourise(0, -1);
+                style = sci.BaseStyleAt(pos);
+            }
 
             if (style == AttributeStyle)
             {
@@ -636,6 +744,9 @@ namespace AS3Context
                 var items = GetAutoCompletionValuesFromType("State");
                 if (items == null || items.Count == 0) return;
                 items.Sort(new MXMLListItemComparer());
+                CompletionList.OnInsert += CompletionList_OnAttributeInsert;
+                attrFile = PluginBase.MainForm.CurrentDocument.FileName;
+                CompletionList.OnCancel += CompletionList_OnAttributeInsert;
                 CompletionList.Show(items, true);
                 CompletionList.MinWordLength = 0;
             }
@@ -674,7 +785,7 @@ namespace AS3Context
                 CompletionList.Show(items, true);
                 CompletionList.MinWordLength = 0;
             }
-            else if (style == AttributeValueStyle || style == BlankStyle)   // for some reason, style = 0 when adding from autocompletion list
+            else if (style == AttributeValueStyle)
             {
                 var tag = XMLComplete.GetXMLContextTag(sci, pos);
                 if (!tag.Tag.StartsWith("<") || tag.Tag.StartsWith("<!") || tag.Closing || tag.Closed || GetParentTag(sci.CurrentPos, true) != null) 
@@ -682,13 +793,8 @@ namespace AS3Context
 
                 pos++;
                 string attrValue;
-                if (style == AttributeValueStyle)
-                {
-                    attrValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
-                    attrValue += ".";
-                }
-                else
-                    attrValue = MxmlFilter.GetCurrentAttributeValueEx(sci, ref pos);
+                attrValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
+                attrValue += ".";
                 string currentAttribute = MxmlFilter.GetCurrentAttributeName(sci, ref pos);
 
                 if (!currentAttribute.ToUpperInvariant().StartsWith("XMLNS:")) return;
@@ -718,12 +824,9 @@ namespace AS3Context
 
         static public bool HandleAttributeValue(object data)
         {
+            CompletionList.OnInsert -= CompletionList_OnAttributeInsert;
+            CompletionList.OnCancel -= CompletionList_OnAttributeInsert;
             if (!GetContext(data)) return false;
-
-            string type = ResolveType(mxmlContext, tagContext.Name);
-            ClassModel tagClass = context.ResolveType(type, mxmlContext.Model);
-            if (tagClass.IsVoid()) return true;
-            tagClass.ResolveExtends();
 
             var sci = ASContext.CurSciControl;
             int pos = sci.CurrentPos;
@@ -731,35 +834,9 @@ namespace AS3Context
             string attrValue = MxmlFilter.GetCurrentAttributeValue(sci, ref pos);
             string currentAttribute = MxmlFilter.GetCurrentAttributeName(sci, ref pos);
 
-            List<ICompletionListItem> mix;
-            
-            if (parentTag == null && currentAttribute.ToUpperInvariant().StartsWith("XMLNS:"))
-            {
-                string[] steps = attrValue.Split('.');
+            List<ICompletionListItem> items = GetAutoCompletionValuesFromAttribute(currentAttribute, attrValue);
 
-                mix = GetAutoCompletionValuesFromImports(steps);
-
-                if (mix.Count == 0) return true;
-
-                if (mix.Count == MxmlFilter.GetCatalogs().Count || steps.Length == 1)
-                    tokenContext = attrValue;
-            }
-            else
-            {
-                mix = GetTagAttributeValues(tagClass, null, currentAttribute.Split('.')[0]);
-                if (mix == null || mix.Count == 0) return true;
-                mix.Sort(new MXMLListItemComparer());
-            }
-
-            // cleanup and show list
-            List<ICompletionListItem> items = new List<ICompletionListItem>();
-            string previous = null;
-            foreach (ICompletionListItem item in mix)
-            {
-                if (previous == item.Label) continue;
-                previous = item.Label;
-                items.Add(item);
-            }
+            if (items == null) return true;
 
             if (!string.IsNullOrEmpty(tokenContext)) CompletionList.Show(items, false, tokenContext);
             else CompletionList.Show(items, true);
@@ -1024,6 +1101,46 @@ namespace AS3Context
                 return GetAutoCompletionValuesFromType(setterType);
 
             return null;
+        }
+
+        private static List<ICompletionListItem> GetAutoCompletionValuesFromAttribute(string attribute, string currentValue)
+        {
+            List<ICompletionListItem> mix;
+
+            if (parentTag == null && attribute.ToUpperInvariant().StartsWith("XMLNS:"))
+            {
+                string[] steps = currentValue.Split('.');
+
+                mix = GetAutoCompletionValuesFromImports(steps);
+
+                if (mix.Count == 0) return null;
+
+                if (mix.Count == MxmlFilter.GetCatalogs().Count || steps.Length == 1)
+                    tokenContext = currentValue;
+            }
+            else
+            {
+                string type = ResolveType(mxmlContext, tagContext.Name);
+                ClassModel tagClass = context.ResolveType(type, mxmlContext.Model);
+                if (tagClass.IsVoid()) return null;
+                tagClass.ResolveExtends();
+
+                mix = GetTagAttributeValues(tagClass, null, attribute.Split('.')[0]);
+                if (mix == null || mix.Count == 0) return null;
+                mix.Sort(new MXMLListItemComparer());
+            }
+
+            // cleanup and show list
+            List<ICompletionListItem> items = new List<ICompletionListItem>();
+            string previous = null;
+            foreach (ICompletionListItem item in mix)
+            {
+                if (previous == item.Label) continue;
+                previous = item.Label;
+                items.Add(item);
+            }
+
+            return items;
         }
 
         private static List<ICompletionListItem> GetAutoCompletionValuesFromInspectable(string type, List<ASMetaData> metas)
