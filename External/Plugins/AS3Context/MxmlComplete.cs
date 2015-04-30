@@ -433,7 +433,7 @@ namespace AS3Context
                 {
                     if (memberMeta.Name == "InstanceType")
                     {
-                        containedType = memberMeta.Params["default"];
+                        containedType = memberMeta.Params["*"];
                         break;
                     }
                 }
@@ -445,7 +445,7 @@ namespace AS3Context
                     foreach (var memberMeta in member.MetaDatas)
                         if (memberMeta.Name == "ArrayElementType")
                         {
-                            containedType = memberMeta.Params["default"];
+                            containedType = memberMeta.Params["*"];
                             break;
                         }
 
@@ -866,7 +866,7 @@ namespace AS3Context
                                 foreach (var meta in tmpClass.MetaDatas)
                                     if (meta.Kind == ASMetaKind.DefaultProperty)
                                     {
-                                        defaultProperty = meta.Params["default"];
+                                        defaultProperty = meta.Params["*"];
                                         break;
                                     }
                         }

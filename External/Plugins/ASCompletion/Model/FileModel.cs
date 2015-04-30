@@ -62,7 +62,7 @@ namespace ASCompletion.Model
             }
             else if ((mParams = reDefaultValueParam.Matches(raw)).Count == 1)
             {
-                Params.Add("default", mParams[0].Groups[1].Value.Trim());
+                Params.Add("*", mParams[0].Groups[1].Value.Trim());
             }
             if (Enum.IsDefined(typeof(ASMetaKind), Name))
             {

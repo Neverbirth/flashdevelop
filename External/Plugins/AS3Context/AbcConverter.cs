@@ -1053,7 +1053,7 @@ namespace AS3Context
             meta.Params = new Dictionary<string, string>();
 
             string defValue = GetAttribute("name");
-            meta.Params["default"] = defValue;
+            meta.Params["*"] = defValue;
 
             meta.RawParams = string.Format("\"{0}\"", defValue);
 
