@@ -74,7 +74,7 @@ namespace AS3Context
             bool isAttribute;
             if (model.IsVoid()) // try resolving tag as member of parent tag
             {
-                parentTag = GetParentTag(ctag.Position, ctag.Closed || ctag.Closing);
+                parentTag = GetParentTag(sci.MBSafeCharPosition(ctag.Position), ctag.Closed || ctag.Closing);
                 if (parentTag != null)
                 {
                     type = ResolveType(mxmlContext, parentTag.Tag);
@@ -176,7 +176,7 @@ namespace AS3Context
                 int pos = sci.CurrentPos;
                 string word = found.State;
                 if (context.CurrentModel.OutOfDate) context.UpdateCurrentFile(false);
-                MxmlContextBase ctx = mxmlContext.GetComponentContext(pos);
+                MxmlContextBase ctx = mxmlContext.GetComponentContext(sci.MBSafeCharPosition(pos));
                 if (ctx.States != null && ctx.States.Contains(word))
                 {
                     MxmlInlineRange cr = ctx.Outline[0];
@@ -772,7 +772,7 @@ namespace AS3Context
 
                 if (model.IsVoid()) // try resolving tag as member of parent tag
                 {
-                    parentTag = GetParentTag(pos, c == '/');
+                    parentTag = GetParentTag(sci.MBSafeCharPosition(pos), c == '/');
                     if (parentTag == null) return;
                     type = ResolveType(mxmlContext, parentTag.Tag);
                     model = context.ResolveType(type, mxmlContext.Model);
@@ -788,7 +788,7 @@ namespace AS3Context
             else if (style == AttributeValueStyle)
             {
                 var tag = XMLComplete.GetXMLContextTag(sci, pos);
-                if (!tag.Tag.StartsWith("<") || tag.Tag.StartsWith("<!") || tag.Closing || tag.Closed || GetParentTag(sci.CurrentPos, true) != null) 
+                if (!tag.Tag.StartsWith("<") || tag.Tag.StartsWith("<!") || tag.Closing || tag.Closed || GetParentTag(sci.MBSafeCharPosition(sci.CurrentPos), true) != null) 
                     return;
 
                 pos++;
@@ -1391,7 +1391,8 @@ namespace AS3Context
             }
             else if (type == "State")
             {
-                MxmlContextBase ctx = mxmlContext.GetComponentContext(ASContext.CurSciControl.CurrentPos);
+                var sci = ASContext.CurSciControl;
+                MxmlContextBase ctx = mxmlContext.GetComponentContext(sci.MBSafeCharPosition(sci.CurrentPos));
                 if (ctx.States != null)
                 {
                     var result = new List<ICompletionListItem>(ctx.States.Count);
@@ -1589,7 +1590,7 @@ namespace AS3Context
             }
 
             // more context
-            parentTag = GetParentTag(tagContext.Position, false);
+            parentTag = GetParentTag(sci.MBSafeCharPosition(tagContext.Position), false);
 
             // rebuild tags cache?
             // NOTE: This cache misses cases like new class names, or having the same amount of classes even if they are different. Could we use some update timestamp?
