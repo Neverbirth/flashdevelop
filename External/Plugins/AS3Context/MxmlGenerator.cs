@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using ASCompletion;
 using ASCompletion.Completion;
@@ -29,7 +30,7 @@ namespace AS3Context
 
             var tagContext = XMLComplete.GetXMLContextTag(sci, pos);
             // more context
-            var parentTag = MxmlComplete.GetParentTag(tagContext.Position, false);
+            var parentTag = MxmlComplete.GetParentTag(sci.MBSafeCharPosition(tagContext.Position), false);
 
             if (parentTag == null || parentTag.Tag == "fx:Component")
             {
@@ -64,14 +65,15 @@ namespace AS3Context
 
         public static void GenerateJob(GeneratorJobType job, ClassModel inClass, string label, Object data)
         {
-            var currPos = ASContext.CurSciControl.CurrentPos;
-            var currLine = ASContext.CurSciControl.LineFromPosition(currPos);
+            var sci = ASContext.CurSciControl;
+            var currPos = sci.CurrentPos;
+            var currLine = sci.LineFromPosition(currPos);
+            var currPosMb = sci.MBSafeCharPosition(currPos);
 
             MxmlComplete.context.CurrentLine = currLine;
             if (MxmlComplete.context.CurrentModel.OutOfDate) MxmlComplete.context.UpdateCurrentFile(false);
 
             var context = MxmlComplete.mxmlContext;
-            var sci = ASContext.CurSciControl;
 
             // TODO: Namespace may not be mx and fx
             string scriptTag, componentTag;
@@ -86,47 +88,17 @@ namespace AS3Context
                 componentTag = "fx:Component";
             }
 
-            MxmlInlineRange owner = null;
-            int ownerStart = 0, ownerEnd = -1;
             // We look for the owner component of the element triggering the generation
-            for (int i = 0, count = context.Outline.Count; i < count; i++)
-            {
-                var element = context.Outline[i];
-                if (element.LineFrom > currLine || element.Start > currPos)
-                {
-                    if (owner == null)
-                    {
-                        owner = context.Outline[0];
-                        ownerEnd = context.Outline.Count - 1;
-                        break;
-                    }
-                    if (element.Start > owner.End)
-                    {
-                        ownerEnd = i - 1;
-                        break;
-                    }
-                    continue;
-                }
-
-                if (element.Tag == componentTag) // AFAIK nested components aren't allowed
-                {
-                    owner = element;
-                    ownerStart = i + 2;
-                }
-                else if (owner != null && element.End > owner.End)
-                {
-                    ownerStart = 1;
-                    owner = null;
-                }
-            }
+            var owner = context.GetComponentContext(currPosMb).Outline[0];
 
             // We look for a suited script element. 
-            // This for loop could be merged with the previous one, complexity would raise, but performance improve, it could be looked into later
             MxmlInlineRange scriptElement = null;
             MxmlInlineRange component = null;
-            for (int i = ownerStart; i <= ownerEnd; i++)
+            for (int i = 1, count = context.Outline.Count; i < count; i++)
             {
                 var element = context.Outline[i];
+                if (element.Start < owner.Start) continue;
+                if (element.Start > owner.End && owner.End != -1) break;
                 if (component != null && element.Start < component.End) continue;
 
                 component = null;
@@ -156,7 +128,17 @@ namespace AS3Context
             {
                 string snip = String.Format("$(Boundary)\n<{0}>\n\t<![CDATA[\n\t\n\t]]>\n</{0}>\n", scriptTag);
 
-                int pos = context.Outline[0].Start + 1;
+                int pos;
+
+                if (owner.Start == context.Outline[0].Start)
+                {
+                    pos = owner.Start + 1;
+                }
+                else
+                {
+                    pos = context.Outline.First(o => o.Start > owner.Start).Start + 1;
+                }
+
                 int c;
 
                 while (true)
@@ -172,17 +154,17 @@ namespace AS3Context
                 sci.SetSel(pos, pos);
                 memberLine = sci.LineFromPosition(pos) + 4;
                 SnippetHelper.InsertSnippetText(sci, pos, snip);
-                sci.CurrentPos = (prePos > pos) ? prePos + sci.TextLength - preLength : prePos;
+                sci.CurrentPos = currPos = (prePos > pos) ? prePos + sci.TextLength - preLength : prePos;
                 MxmlComplete.context.UpdateCurrentFile(false);
                 context = MxmlComplete.mxmlContext;
             }
             else
             {
-                for (int i = 0, count = context.As3Ranges.Count; i < count; i++)
+                /*for (int i = 0, count = context.As3Ranges.Count; i < count; i++)
                 {
                     var range = context.As3Ranges[i];
                     if (range.Start < scriptElement.Start || range.End > scriptElement.End) continue;
-                }
+                }*/
 
                 int pos = scriptElement.End;
                 char c;
@@ -229,14 +211,14 @@ namespace AS3Context
                         for (int i = 1, count = context.Outline.Count; i < count; i++)
                         {
                             var element = context.Outline[i];
-                            if (element.LineFrom > currLine || element.Start > currPos)
+                            if (element.Start > currPosMb)
                                 break;
 
                             if (element.Tag.EndsWith(classType))
                                 classCount++;
                             else continue;
 
-                            if ((element.LineTo >= currLine && element.End >= currPos) || element.End == -1)
+                            if (element.End >= currPosMb || element.End == -1)
                                 bestMatch = element;
                         }
 
