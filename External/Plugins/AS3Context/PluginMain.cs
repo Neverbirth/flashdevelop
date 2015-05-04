@@ -327,8 +327,34 @@ namespace AS3Context
         /// </summary> 
         private void OnChar(ScintillaNet.ScintillaControl sci, Int32 value)
         {
-            if (sci.ConfigurationLanguage == "xml" && sci.Lexer == 5 && inMXML)
+            if (inMXML && sci.ConfigurationLanguage == "xml" && sci.Lexer == 5)
                 MxmlComplete.OnChar(sci, value);
+        }
+
+        private int lastMxmlHoverPosition;
+        private void OnMouseHover(ScintillaNet.ScintillaControl sci, int position)
+        {
+            if (!inMXML || sci.ConfigurationLanguage != "xml" || sci.Lexer != 5)
+                return;
+
+            lastMxmlHoverPosition = position;
+
+            // get word at mouse position
+            var expression = MxmlComplete.GetExpression(sci, position);
+            if (expression != null)
+            {
+                string text = MxmlComplete.GetToolTipText(expression);
+
+                if (text == null) return;
+                // show tooltip
+                UITools.Tip.ShowAtMouseLocation(text);
+            }
+        }
+
+        private void OnUpdateSimpleTip(ScintillaNet.ScintillaControl sci, System.Drawing.Point mousePosition)
+        {
+            if (UITools.Tip.Visible && inMXML && sci.ConfigurationLanguage == "xml" && sci.Lexer == 5)
+                OnMouseHover(sci, lastMxmlHoverPosition);
         }
 
         private bool OpenVirtualFileModel(string virtualPath)
@@ -463,6 +489,8 @@ namespace AS3Context
             EventManager.AddEventHandler(this, EventType.Command, HandlingPriority.High);
             EventManager.AddEventHandler(this, EventType.Command | EventType.Keys | EventType.ProcessArgs, HandlingPriority.Low);
             UITools.Manager.OnCharAdded += new UITools.CharAddedHandler(OnChar);
+            UITools.Manager.OnMouseHover += new UITools.MouseHoverHandler(OnMouseHover);
+            UITools.Tip.OnUpdateSimpleTip += new RichToolTip.UpdateTipHandler(OnUpdateSimpleTip);
         }
 
         /// <summary>

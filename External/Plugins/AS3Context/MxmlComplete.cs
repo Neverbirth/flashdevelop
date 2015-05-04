@@ -39,93 +39,12 @@ namespace AS3Context
         {
             ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
             if (sci == null) return false;
-            if (sci.ConfigurationLanguage != "xml") return false;
+            if (sci.ConfigurationLanguage != "xml" || !sci.ContainsFocus) return false;
 
             int pos = sci.CurrentPos;
-            int style = sci.BaseStyleAt(pos);
-            XMLContextTag ctag;
-            if (style == TagStyle)
-            {
-                int len = sci.TextLength;
-                while (pos < len)
-                {
-                    char c = (char)sci.CharAt(pos);
-                    if (c <= 32 || c == '/' || c == '>') break;
-                    pos++;
-                }
-            }
-            ctag = XMLComplete.GetXMLContextTag(sci, pos);
-            if (ctag.Name == null) return true;
-            pos = sci.CurrentPos;
-            string word = sci.GetWordFromPosition(pos);
-            if (word == null) return true;
-            if (style != TagStyle)
-            {
-                if (sci.WordEndPosition(pos, true) == pos) style = sci.BaseStyleAt(pos - 1);
-            }
-            else
-                word = ctag.Name.Substring(ctag.Name.IndexOf(':') + 1);
 
-            if (style == AttributeValueStyle) return true; // TODO: attribute values
+            OpenDocumentToDeclaration(sci, GetExpression(sci, pos));
 
-            string type = ResolveType(mxmlContext, ctag.Name);
-            ClassModel model = context.ResolveType(type, mxmlContext.Model);
-
-            bool isAttribute;
-            if (model.IsVoid()) // try resolving tag as member of parent tag
-            {
-                parentTag = GetParentTag(sci.MBSafeCharPosition(ctag.Position), ctag.Closed || ctag.Closing);
-                if (parentTag != null)
-                {
-                    type = ResolveType(mxmlContext, parentTag.Tag);
-                    model = context.ResolveType(type, mxmlContext.Model);
-                    if (model.IsVoid()) return true;
-                }
-                else return true;
-
-                isAttribute = true;
-            }
-            else isAttribute = style == AttributeStyle;
-
-            if (isAttribute)
-            {
-                bool hasDot = false;
-                if (style == TagStyle)
-                {
-                    var attrParts = word.Split('.');
-                    word = sci.GetWordFromPosition(pos);
-                    if (attrParts.Length > 1 && word == attrParts[1]) hasDot = true;
-                    else word = attrParts[0];
-                }
-                else
-                    while (pos >= 0)
-                    {
-                        char c = (char)sci.CharAt(pos);
-                        if (c == '.')
-                        {
-                            hasDot = true;
-                            break;
-                        }
-                        if (c <= 32 || c == '<' || c == ':') break;
-                        pos--;
-                    }
-                if (hasDot) // it's a state modifier
-                {
-                    OpenDocumentToDeclaration(sci, new MxmlResult {State = word});
-                }
-                else
-                {
-                    MxmlResult found = ResolveAttribute(model, word);
-                    OpenDocumentToDeclaration(sci, found);
-                }
-            }
-            else
-            {
-                ASResult found = new ASResult();
-                found.InFile = model.InFile;
-                found.Type = model;
-                ASComplete.OpenDocumentToDeclaration(sci, found);
-            }
             return true;
         }
 
@@ -167,7 +86,163 @@ namespace AS3Context
             } while (attrName != null);
         }
 
-        private static void OpenDocumentToDeclaration(ScintillaNet.ScintillaControl sci, MxmlResult found)
+        public static MxmlResult GetExpression(ScintillaNet.ScintillaControl sci, int pos)
+        {
+            int style = sci.BaseStyleAt(pos);
+            int i = pos;
+            if (style == TagStyle)
+            {
+                int len = sci.TextLength;
+                while (i < len)
+                {
+                    char c = (char)sci.CharAt(i);
+                    if (c <= 32 || c == '/' || c == '>') break;
+                    i++;
+                }
+            }
+            XMLContextTag ctag = XMLComplete.GetXMLContextTag(sci, i);
+            if (ctag.Name == null) return null;
+            string word = sci.GetWordFromPosition(pos);
+            if (word == null) return null;
+            if (style != TagStyle)
+            {
+                if (sci.WordEndPosition(pos, true) == pos) style = sci.BaseStyleAt(pos - 1);
+            }
+            else
+                word = ctag.Name.Substring(ctag.Name.IndexOf(':') + 1);
+
+            if (style == AttributeValueStyle) return null; // TODO: attribute values
+
+            string type = ResolveType(mxmlContext, ctag.Name);
+            ClassModel model = context.ResolveType(type, mxmlContext.Model);
+
+            bool isAttribute;
+            if (model.IsVoid()) // try resolving tag as member of parent tag
+            {
+                parentTag = GetParentTag(sci.MBSafeCharPosition(ctag.Position), ctag.Closed || ctag.Closing);
+                if (parentTag != null)
+                {
+                    type = ResolveType(mxmlContext, parentTag.Tag);
+                    model = context.ResolveType(type, mxmlContext.Model);
+                    if (model.IsVoid()) return null;
+                }
+                else return null;
+
+                isAttribute = true;
+            }
+            else isAttribute = style == AttributeStyle;
+
+            if (isAttribute)
+            {
+                bool hasDot = false;
+                if (style == TagStyle)
+                {
+                    var attrParts = word.Split('.');
+                    word = sci.GetWordFromPosition(pos);
+                    if (attrParts.Length > 1 && word == attrParts[1]) hasDot = true;
+                    else word = attrParts[0];
+                }
+                else
+                    while (pos >= 0)
+                    {
+                        char c = (char)sci.CharAt(pos);
+                        if (c == '.')
+                        {
+                            hasDot = true;
+                            break;
+                        }
+                        if (c <= 32 || c == '<' || c == ':') break;
+                        pos--;
+                    }
+                if (hasDot) // it's a state modifier
+                {
+                    return new MxmlResult { State = word };
+                }
+                else
+                {
+                    return ResolveAttribute(model, word);
+                }
+            }
+            else
+            {
+                ASResult found = new ASResult();
+                found.InFile = model.InFile;
+                found.Type = model;
+                return new MxmlResult {ASResult = found};
+            }
+        }
+
+        static public string GetToolTipText(MxmlResult expression)
+        {
+            string text = null;
+            if (expression.MetaTag != null)
+            {
+                var inClass = expression.ASResult.InClass;
+                text = "Meta " + expression.MetaTag.Name;
+                if (inClass != ClassModel.VoidClass)
+                    text += "\n[COLOR=#666666:MULTIPLY]in " + MemberModel.FormatType(inClass.QualifiedName) + "[/COLOR]";
+
+                if (expression.MetaTag.Comments != null && ASCompletion.Context.ASContext.CommonSettings.SmartTipsEnabled)
+                {
+                    string details;
+                    if (UITools.Manager.ShowDetails)
+                    {
+                        CommentBlock cb = ASDocumentation.ParseComment(expression.MetaTag.Comments);
+                        details = ASDocumentation.GetTipFullDetails(cb, null);
+                    }
+                    else
+                    {
+                        CommentBlock cb = ASDocumentation.ParseComment(expression.MetaTag.Comments);
+                        details = " \u2026" + ASDocumentation.GetTipShortDetails(cb, null);
+                    }
+                    text += details.TrimStart(new char[] { ' ', '\u2026' });
+                }
+            }
+            else if (expression.ASResult != null)
+            {
+                var member = expression.ASResult.Member;
+                if (member != null && member.Comments == null && (member.Flags & FlagType.Setter) > 0)
+                {
+                    // Hacky comment resolution
+                    var flags = FlagType.Getter | FlagType.Setter;
+                    var tmpClass = expression.ASResult.InClass;
+                    string tmpComments = null;
+                    string preComments = member.Comments;
+                    tmpClass.ResolveExtends();
+
+                    while (tmpClass != null && !tmpClass.IsVoid())
+                    {
+                        foreach (MemberModel cmember in tmpClass.Members)
+                            if (cmember.Name == member.Name && (cmember.Flags & flags) > 0 && cmember.Comments != null)
+                            {
+                                tmpComments = cmember.Comments;
+                                break;
+                            }
+
+                        if (tmpComments != null)
+                            break;
+
+                        tmpClass = tmpClass.Extends;
+                        if (tmpClass != null && tmpClass.InFile.Package == "" && tmpClass.Name == "Object")
+                            break;
+                    }
+
+                    member.Comments = tmpComments;
+                    text = ASComplete.GetToolTipText(expression.ASResult);
+                    member.Comments = preComments;
+                }
+                else
+                {
+                    text = ASComplete.GetToolTipText(expression.ASResult);
+                }
+            }
+            else if (expression.State != null)
+                text = "State \"" + expression.State + "\"";
+            
+            return text;
+        }
+
+        public static void OpenDocumentToDeclaration(ScintillaNet.ScintillaControl sci, MxmlResult found)
         {
             if (found == null) return;
 
