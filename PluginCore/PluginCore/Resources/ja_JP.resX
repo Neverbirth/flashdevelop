@@ -3079,6 +3079,78 @@ AfterSimilarAccessorMethod: 同様のアクセサメソッドの後に配置。"
   <data name="ASClassWizard.Wizard.Label.SuperClass" xml:space="preserve">
     <value>基本クラス:</value>
   </data>
+  <data name="ASClassWizard.Wizard.Label.NewAs3Interface" xml:space="preserve">
+    <value>New ActionScript 3 Interface</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Members" xml:space="preserve">
+    <value>Members:</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Button.AddMember" xml:space="preserve">
+    <value>A&amp;dd</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Member" xml:space="preserve">
+    <value>Member</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.MemberName" xml:space="preserve">
+    <value>Name</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Accessors" xml:space="preserve">
+    <value>Accessors</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Arguments" xml:space="preserve">
+    <value>Arguments</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Return" xml:space="preserve">
+    <value>Return</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Type" xml:space="preserve">
+    <value>Type</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Value" xml:space="preserve">
+    <value>Value</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Button.Create" xml:space="preserve">
+    <value>Crea&amp;te</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Error.ExistingArg" xml:space="preserve">
+    <value>An argument with the same name already exists</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Error.EmptyName" xml:space="preserve">
+    <value>The name cannot be empty</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Warning.ConflictingMember" xml:space="preserve">
+    <value>New member would conflict with interface {0}</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Warning.ExistingInheritedMember" xml:space="preserve">
+    <value>{0} already in list</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Warning.ExistingMember" xml:space="preserve">
+    <value>{0} already in list, do you wish to replace it?</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Error.InvalidInterfaceName" xml:space="preserve">
+    <value>Interface name contains invalid characters.</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Error.ConflictingMembers" xml:space="preserve">
+    <value>Conflicting members detected: {0}</value>
+    <comment>Added after 4.7.1</comment>
+  </data>
   <data name="CodeRefactor.Info.Description" xml:space="preserve">
     <value>FlashDevelop にリファクタリング機能を追加します。</value>
   </data>

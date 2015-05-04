@@ -19,6 +19,7 @@
     <UpgradeBackupLocation>
     </UpgradeBackupLocation>
     <TargetFrameworkProfile />
+    <IsWebBootstrapper>false</IsWebBootstrapper>
     <PublishUrl>publish\</PublishUrl>
     <Install>true</Install>
     <InstallFrom>Disk</InstallFrom>
@@ -31,7 +32,6 @@
     <MapFileExtensions>true</MapFileExtensions>
     <ApplicationRevision>0</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
   </PropertyGroup>
@@ -55,8 +55,8 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <PlatformTarget>x86</PlatformTarget>
     <OutputPath>..\..\..\FlashDevelop\Bin\Debug\Plugins\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <Optimize>true</Optimize>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <Optimize>false</Optimize>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
     <PlatformTarget>x86</PlatformTarget>
@@ -90,6 +90,12 @@
     <Compile Include="Wizards\AS3ClassWizard.designer.cs">
       <DependentUpon>AS3ClassWizard.cs</DependentUpon>
     </Compile>
+    <Compile Include="Wizards\AS3InterfaceWizard.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Wizards\AS3InterfaceWizard.Designer.cs">
+      <DependentUpon>AS3InterfaceWizard.cs</DependentUpon>
+    </Compile>
     <Compile Include="Wizards\ClassBrowser.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -104,6 +110,9 @@
     </Compile>
     <Compile Include="Wizards\PackageBrowser.designer.cs">
       <DependentUpon>PackageBrowser.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Wizards\PromptTextBox.cs">
+      <SubType>Component</SubType>
     </Compile>
   </ItemGroup>
   <ItemGroup>

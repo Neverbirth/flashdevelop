@@ -19,7 +19,7 @@ namespace ASClassWizard.Wizards
     {
 
         private MemberList all;
-        private List<GListBox.GListBoxItem> dataProvider;
+        private List<GListBoxItemEx> dataProvider;
         private FlagType invalidFlag;
         private FlagType validFlag;
         private int resultCount;
@@ -34,7 +34,7 @@ namespace ASClassWizard.Wizards
             set { this.all = value; }
         }
 
-        public List<GListBox.GListBoxItem> DataProvider
+        public List<GListBoxItemEx> DataProvider
         {
             get { return this.dataProvider; }
             set { this.dataProvider = value; }
@@ -57,10 +57,15 @@ namespace ASClassWizard.Wizards
             get { return this.itemList.SelectedItem != null ? this.itemList.SelectedItem.ToString() : null; }
         }
 
+        public MemberModel SelectedClassModel
+        {
+            get { return this.itemList.SelectedItem != null ? ((GListBoxItemEx)this.itemList.SelectedItem).Model : null; }
+        }
+
         public ClassBrowser()
         {
             this.FormGuid = "a076f763-e85e-49a2-8688-a6d35b39e7c6";
-            this.DataProvider = new List<GListBox.GListBoxItem>();
+            this.DataProvider = new List<GListBoxItemEx>();
             InitializeComponent();
             InitializeLocalization();
             this.Font = PluginBase.Settings.DefaultFont;
@@ -78,7 +83,7 @@ namespace ASClassWizard.Wizards
 
         private void ClassBrowser_Load(object sender, EventArgs e)
         {
-            ASClassWizard.Wizards.GListBox.GListBoxItem node;
+            GListBoxItemEx node;
             this.itemList.BeginUpdate();
             this.itemList.Items.Clear();
             if (this.ClassList != null)
@@ -91,7 +96,7 @@ namespace ASClassWizard.Wizards
                         if (!((item.Flags & IncludeFlag) > 0)) continue;
                     }
                     if (this.itemList.Items.Count > 0 && item.Name == this.itemList.Items[this.itemList.Items.Count - 1].ToString()) continue;
-                    node = new ASClassWizard.Wizards.GListBox.GListBoxItem(item.Name, (item.Flags & FlagType.Interface) > 0 ? 6 : 8);
+                    node = new GListBoxItemEx(item.Name, (item.Flags & FlagType.Interface) > 0 ? 6 : 8, item);
                     this.itemList.Items.Add(node);
                     this.DataProvider.Add(node);
                 }
@@ -115,7 +120,7 @@ namespace ASClassWizard.Wizards
             this.itemList.Items.Clear();
 
             topIndex = 0;
-            List<GListBox.GListBoxItem> result = this.FilterSmart();
+            List<GListBoxItemEx> result = this.FilterSmart();
                 
             this.itemList.Items.AddRange(result.ToArray());
             this.itemList.EndUpdate();
@@ -128,7 +133,7 @@ namespace ASClassWizard.Wizards
         /// <summary>
         /// Filter using CompletionList smart comparison
         /// </summary>
-        private List<GListBox.GListBoxItem> FilterSmart()
+        private List<GListBoxItemEx> FilterSmart()
         {
             lastScore = 99;
             resultCount = 0;
@@ -142,7 +147,7 @@ namespace ASClassWizard.Wizards
         /// </summary>
         /// <param name="item"></param>
         /// <returns></returns>
-        private bool FindAllItems( GListBox.GListBoxItem item )
+        private bool FindAllItems( GListBoxItemEx item )
         {
             if (matchLen == 0) return true;
             int score = PluginCore.Controls.CompletionList.SmartMatch(item.Text, matchToken, matchLen);
@@ -206,6 +211,17 @@ namespace ASClassWizard.Wizards
                 {
                     ++this.itemList.SelectedIndex;
                 }
+            }
+        }
+
+        public class GListBoxItemEx : GListBox.GListBoxItem
+        {
+
+            public MemberModel Model { get; set; }
+
+            public GListBoxItemEx(string text, int index, MemberModel model) : base (text, index)
+            {
+                Model = model;
             }
         }
     }
