@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<$(ExtendsNs):$(Extends) $(Namespaces)$(Implements)>
+	$(EntryPoint)
+</$(ExtendsNs):$(Extends)>

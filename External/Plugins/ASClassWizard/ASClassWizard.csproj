@@ -84,6 +84,8 @@
     <Compile Include="Resources\ASClassOptions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PluginMain.cs" />
+    <Compile Include="Resources\ITemplateProcessor.cs" />
+    <Compile Include="Resources\MxmlClassOptions.cs" />
     <Compile Include="Wizards\AS3ClassWizard.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -102,8 +104,20 @@
     <Compile Include="Wizards\ClassBrowser.designer.cs">
       <DependentUpon>ClassBrowser.cs</DependentUpon>
     </Compile>
+    <Compile Include="Wizards\MxmlClassWizard.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Wizards\MxmlClassWizard.designer.cs">
+      <DependentUpon>MxmlClassWizard.cs</DependentUpon>
+    </Compile>
     <Compile Include="Wizards\GListBox.cs">
       <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Wizards\NamespaceDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Wizards\NamespaceDialog.Designer.cs">
+      <DependentUpon>NamespaceDialog.cs</DependentUpon>
     </Compile>
     <Compile Include="Wizards\PackageBrowser.cs">
       <SubType>Form</SubType>

@@ -3150,6 +3150,42 @@ Bitte bedenken Sie, dass Sie viele Projektoptionen nicht mehr nutzen können, so
     <value>Conflicting members detected: {0}</value>
     <comment>Added after 4.7.1</comment>
   </data>
+  <data name="ASClassWizard.Wizard.Label.NewMxmlClass" xml:space="preserve">
+    <value>New MXML Class</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Label.Namespaces" xml:space="preserve">
+    <value>Namespaces:</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Title" xml:space="preserve">
+    <value>New Namespace</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Label.Prefix" xml:space="preserve">
+    <value>Prefix:</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Label.Name" xml:space="preserve">
+    <value>Name:</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Error.ExistingPrefix" xml:space="preserve">
+    <value>Specified prefix is already defined</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Error.InvalidPrefix" xml:space="preserve">
+    <value>Specified prefix is not valid</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.NamespacesDialog.Error.BlankName" xml:space="preserve">
+    <value>Name cannot be blank</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
+  <data name="ASClassWizard.Wizard.Error.MissingMxmlBaseClass" xml:space="preserve">
+    <value>Base class must be specified</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
   <data name="CodeRefactor.Info.Description" xml:space="preserve">
     <value>Fügt FlashDevelop Refactoring hinzu.</value>
   </data>
