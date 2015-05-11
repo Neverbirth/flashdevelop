@@ -40,7 +40,7 @@ namespace AS3Context
                     {
                         string nsUri;
                         // Should we compare against the root tag namespace instead? some checks indicate this is the way of doing it
-                        if (Namespaces.TryGetValue("basic", out nsUri) && nsUri == "library://ns.apache.org/flexjs/basic")
+                        if (Namespaces.TryGetValue("js", out nsUri) && nsUri == "library://ns.apache.org/flexjs/basic")
                             _documentType = FlexDocumentType.FlexJs;
                         else if (Namespaces.TryGetValue("fx", out nsUri) && nsUri == "http://ns.adobe.com/mxml/2009")
                             _documentType = FlexDocumentType.Flex4;
@@ -89,7 +89,7 @@ namespace AS3Context
     }
 
     #region MXML Filter
-    class MxmlFilter
+    public class MxmlFilter
     {
         static private readonly Regex tagName = new Regex("<(?<name>/?[a-z][a-z0-9_:]*)[\\s>]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static public string OLD_MX = "http://www.adobe.com/2006/mxml";
@@ -221,7 +221,7 @@ namespace AS3Context
         /// </summary>
         /// <param name="src"></param>
         /// <returns></returns>
-        static public string FilterSource(string name, string src, MxmlFilterContext ctx)
+        static internal string FilterSource(string name, string src, MxmlFilterContext ctx)
         {
             List<InlineRange> as3ranges = ctx.As3Ranges;
             List<MxmlInlineRange> outline = ctx.Outline;
@@ -763,7 +763,7 @@ namespace AS3Context
         /// </summary>
         /// <param name="model"></param>
         /// <returns></returns>
-        static public void FilterSource(FileModel model, MxmlFilterContext ctx)
+        static internal void FilterSource(FileModel model, MxmlFilterContext ctx)
         {
             ctx.Model = model;
             model.InlinedIn = "xml";
@@ -890,10 +890,9 @@ namespace AS3Context
         }
     }
 
-    class MxmlCatalog : Dictionary<string, string>
+    public class MxmlCatalog : Dictionary<string, string>
     {
         public string URI;
-        public string NS;
     }
     #endregion
 }
