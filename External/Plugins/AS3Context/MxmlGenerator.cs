@@ -15,7 +15,7 @@ using XMLCompletion;
 
 namespace AS3Context
 {
-    class MxmlGenerator
+    public class MxmlGenerator
     {
         public static void ContextualGenerator(ScintillaNet.ScintillaControl Sci)
         {
@@ -126,7 +126,7 @@ namespace AS3Context
             int memberLine;
             if (scriptElement == null)
             {
-                string snip = String.Format("$(Boundary)\n<{0}>\n\t<![CDATA[\n\t\n\t]]>\n</{0}>\n", scriptTag);
+                string snip = String.Format("$(Boundary)\n<{0}>\n\t<![CDATA[\n\t\t\n\t]]>\n</{0}>\n", scriptTag);
 
                 int pos;
 
@@ -154,6 +154,7 @@ namespace AS3Context
                 sci.SetSel(pos, pos);
                 memberLine = sci.LineFromPosition(pos) + 4;
                 SnippetHelper.InsertSnippetText(sci, pos, snip);
+                sci.ReindentLines(memberLine - 3, 5);
                 sci.CurrentPos = currPos = (prePos > pos) ? prePos + sci.TextLength - preLength : prePos;
                 MxmlComplete.context.UpdateCurrentFile(false);
                 context = MxmlComplete.mxmlContext;
