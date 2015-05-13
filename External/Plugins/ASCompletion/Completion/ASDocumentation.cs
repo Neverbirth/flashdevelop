@@ -301,7 +301,6 @@ namespace ASCompletion.Completion
         static public CommentBlock ParseComment(string comment)
         {
             // cleanup
-            comment = comment.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&nbsp;", " ");
             comment = reKeepTags.Replace(comment, "[$1]");
             comment = reSpecialTags.Replace(comment, match =>
             {
@@ -333,11 +332,11 @@ namespace ASCompletion.Completion
             
             if (tags.Count == 0)
             {
-                cb.Description = comment.Trim();
+                cb.Description = ReplaceHtmlEntities(comment.Trim());
                 return cb;
             }
             
-            if (tags[0].Index > 0) cb.Description = comment.Substring(0, tags[0].Index).Trim();
+            if (tags[0].Index > 0) cb.Description = ReplaceHtmlEntities(comment.Substring(0, tags[0].Index).Trim());
             else cb.Description = "";
             cb.TagName = new ArrayList();
             cb.TagDesc = new ArrayList();
@@ -380,6 +379,13 @@ namespace ASCompletion.Completion
             
         }
         
+        static private string ReplaceHtmlEntities(string src)
+        {
+            return src.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&nbsp;", " ").Replace("&#64;", "@")
+                .Replace("&#42;", "*").Replace("&#xB0;", "º").Replace("&#xAE;", "\xAE").Replace("&#x99;", "™")
+                .Replace("&#x2014;", "\u2014").Replace("&#38;", "&");
+        }
+
         static public string GetTipDetails(MemberModel member, string highlightParam)
         {
             try
