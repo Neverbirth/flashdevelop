@@ -78,7 +78,7 @@ namespace PluginCore.BBCode
             if (style == null || tf == null || selEnd <= selStart || selEnd < 0)
                 return;
 
-            tf.Select(selStart, selEnd);
+            tf.Select(selStart, selEnd - selStart);
 
             FontStyle fontStyle = tf.Font.Style;
             String fontName = tf.Font.Name;
