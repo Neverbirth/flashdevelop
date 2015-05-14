@@ -300,6 +300,8 @@ namespace ASCompletion.Completion
 
         static public CommentBlock ParseComment(string comment)
         {
+            // escaped characters for the bbcode parser
+            comment = comment.Replace("\\", "\\\\").Replace("[", "\\[");
             // cleanup
             comment = reKeepTags.Replace(comment, "[$1]");
             comment = reSpecialTags.Replace(comment, match =>
