@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-using ASCompletion.Model;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
+using ASCompletion.Model;
 
 namespace AS3Context
 {

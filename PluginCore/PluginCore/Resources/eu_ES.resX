@@ -917,6 +917,10 @@ Alternatiba gisa, Adobe Flash Professional ere sintaxi egiaztapenerako erabil da
   <data name="FlashDevelop.Label.ClearBreakpoints" xml:space="preserve">
     <value>Eten-puntuak garbitu</value>
   </data>
+  <data name="FlashDevelop.Label.CleanReopenList" xml:space="preserve">
+    <value>&amp;Remove Invalid Files</value>
+    <comment>Added after 5.0.0</comment>
+  </data>
   <data name="FlashDevelop.Label.ClearReopenList" xml:space="preserve">
     <value>Azken fitxategien zerrenda garbitu</value>
   </data>
@@ -1881,6 +1885,10 @@ Alternatiba gisa, Adobe Flash Professional ere sintaxi egiaztapenerako erabil da
   </data>
   <data name="ProjectManager.Label.Cancel" xml:space="preserve">
     <value>&amp;Ezeztatu</value>
+  </data>
+  <data name="ProjectManager.Label.CleanRecentProjects" xml:space="preserve">
+    <value>&amp;Remove Invalid Projects</value>
+    <comment>Added after 5.0.0</comment>
   </data>
   <data name="ProjectManager.Label.ClearRecentProjects" xml:space="preserve">
     <value>&amp;Azken proiektuen zerrenda garbitu</value>
@@ -3554,7 +3562,7 @@ Kontutan izan injekzioa gaituz gero, ezin izanen diren proiektuaren hainbat auke
   <data name="CodeAnalyzer.Description.PMDRuleset" xml:space="preserve">
     <value>Flex PMD-arentzako lehenetsitako arau-multzo pertsonalizatuen fitxategia custom ruleset file for the Flex PMD.</value>
   </data>
-  <data name="CodeAnalyzer.Info.Decription" xml:space="preserve">
+  <data name="CodeAnalyzer.Info.Description" xml:space="preserve">
     <value>Flex PMD kode analizatzailea FlashDevelop-en txertatzen du.</value>
   </data>
   <data name="CodeAnalyzer.Label.AnalyzeProject" xml:space="preserve">
@@ -5929,10 +5937,6 @@ Lokalizazio pertsonalizatuek lehenetsiaren luzapen bat izan behar dute, adb. en-
     <value>Objektu zuhaitz batek arbelra kopiatzean izan dezakeen karaktere kopuru maximoa, gutxi gora-behera.</value>
     <comment>Added after 4.7.2</comment>
   </data>
-  <data name="FlashDebugger.Label.CopyValue" xml:space="preserve">
-    <value>Balioa kopiatu</value>
-    <comment>Added after 4.7.2</comment>
-  </data>
   <data name="FlashDebugger.Label.CopyID" xml:space="preserve">
     <value>ID-a kopiatu</value>
     <comment>Added after 4.7.2</comment>
@@ -5948,5 +5952,13 @@ Lokalizazio pertsonalizatuek lehenetsiaren luzapen bat izan behar dute, adb. en-
   <data name="FlashDebugger.TreeExporter.DuplicatedObject" xml:space="preserve">
     <value>[{0} objektua lehendik zerrendatua]</value>
     <comment>Added after 4.7.2</comment>
+  </data>
+  <data name="ProjectManager.Label.InClasspathsOnly" xml:space="preserve">
+    <value>In Classpaths only</value>
+    <comment>Added after 5.0.1</comment>
+  </data>
+  <data name="FlashDevelop.Info.HighlightWordBack" xml:space="preserve">
+    <value>Highlight word:</value>
+    <comment>Added after 5.0.2</comment>
   </data>
 </root>

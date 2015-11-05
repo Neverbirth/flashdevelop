@@ -1,18 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using AS3Context.Utils;
 using ASCompletion;
-using ASCompletion.Model;
 using ASCompletion.Completion;
 using ASCompletion.Context;
-using XMLCompletion;
+using ASCompletion.Model;
 using PluginCore;
 using PluginCore.Controls;
 using PluginCore.Helpers;
+using ScintillaNet;
+using XMLCompletion;
 
 namespace AS3Context
 {
@@ -37,7 +40,7 @@ namespace AS3Context
         #region shortcuts
         public static bool GotoDeclaration()
         {
-            ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
+            ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
             if (sci == null) return false;
             if (sci.ConfigurationLanguage != "xml" || !sci.ContainsFocus) return false;
 
@@ -614,7 +617,7 @@ namespace AS3Context
             if (tagContext.Closing) return false;
 
             string type = ResolveType(mxmlContext, tagContext.Name);
-            ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
+            ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
 
             if (type.StartsWith("mx.builtin.") || type.StartsWith("fx.builtin.")) // special tags
             {
@@ -1270,7 +1273,7 @@ namespace AS3Context
                         case ASMetaKind.Exclude:
                             break;
                         case ASMetaKind.Include:    // TODO: Check this case...
-                            System.Diagnostics.Debug.Assert(false, "Please, check this case");
+                            Debug.Assert(false, "Please, check this case");
                             FileModel incModel = ParseInclude(model.InFile, meta);
                             return GetAutoCompletionValuesFromMetaData(incModel.GetPublicClass(), attribute, out result);
                     }
@@ -1427,7 +1430,6 @@ namespace AS3Context
                 tmpClass.ResolveExtends();
 
                 List<ICompletionListItem> result = null;
-                var validTypes = new Dictionary<string, bool>();
                 while (tmpClass != null && !tmpClass.IsVoid())
                 {
                     foreach (MemberModel member in tmpClass.Members)
@@ -1644,7 +1646,7 @@ namespace AS3Context
             if (mxmlContext == null || mxmlContext.Model == null)
                 return false;
 
-            ScintillaNet.ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
+            ScintillaControl sci = PluginBase.MainForm.CurrentDocument.SciControl;
             if (sci == null) return false;
 
             // XmlComplete context
@@ -2032,9 +2034,9 @@ namespace AS3Context
             }
         }
 
-        public System.Drawing.Bitmap Icon
+        public Bitmap Icon
         {
-            get { return (System.Drawing.Bitmap)ASContext.Panel.GetIcon(icon); }
+            get { return (Bitmap)ASContext.Panel.GetIcon(icon); }
         }
 
         public string Value

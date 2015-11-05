@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Text;
+using System.Drawing;
 using System.Collections;
 using System.Windows.Forms;
 using System.Collections.Generic;
@@ -8,13 +11,13 @@ using System.Drawing.Printing;
 using PluginCore.FRService;
 using PluginCore.Utilities;
 using PluginCore.Managers;
-using System.IO;
-using System.Text;
+using PluginCore.Controls;
+using PluginCore.Helpers;
 using PluginCore;
 
 namespace ScintillaNet
 {
-    public class ScintillaControl : Control
+    public class ScintillaControl : Control, IEventHandler
     {
         private bool saveBOM;
         private Encoding encoding;
@@ -36,7 +39,168 @@ namespace ScintillaNet
         private int lastSelectionLength = 0;
         private int lastSelectionStart = 0;
         private int lastSelectionEnd = 0;
-        
+
+        #region ScrollBars
+
+        private ScrollBarEx vScrollBar;
+        private ScrollBarEx hScrollBar;
+
+        /// <summary>
+        /// Is the vertical scroll bar visible?
+        /// </summary>
+        public Boolean IsVScrollBar
+        {
+            get
+            {
+                if (this.Controls.Contains(this.vScrollBar)) return this.vScrollBar.Visible;
+                else return SPerform(2281, 0, 0) != 0;
+            }
+            set
+            {
+                if (this.Controls.Contains(this.vScrollBar)) this.vScrollBar.Visible = value;
+                else SPerform(2280, (uint)(value ? 1 : 0), 0);
+            }
+        }
+
+        /// <summary>
+        /// Is the horizontal scroll bar visible? 
+        /// </summary>
+        public Boolean IsHScrollBar
+        {
+            get
+            {
+                if (this.Controls.Contains(this.hScrollBar)) return this.hScrollBar.Visible;
+                else return SPerform(2131, 0, 0) != 0;
+            }
+            set
+            {
+                if (this.Controls.Contains(this.hScrollBar)) this.hScrollBar.Visible = value;
+                else SPerform(2130, (uint)(value ? 1 : 0), 0);
+            }
+        }
+
+        /// <summary>
+        /// Handle the incoming theme events
+        /// </summary>
+        public void HandleEvent(Object sender, NotifyEvent e, HandlingPriority priority)
+        {
+            if (e.Type == EventType.ApplyTheme)
+            {
+                Boolean enabled = PluginBase.MainForm.GetThemeColor("ScrollBar.ForeColor") != Color.Empty;
+                if (enabled && !this.Controls.Contains(this.vScrollBar))
+                {
+                    this.AddScrollBars(this);
+                }
+                else if (!enabled && this.Controls.Contains(this.vScrollBar))
+                {
+                    this.RemoveScrollBars(this);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Init the custom scrollbars
+        /// </summary>
+        private void InitScrollBars(ScintillaControl sender)
+        {
+            sender.vScrollBar = new ScrollBarEx();
+            sender.vScrollBar.OverScroll = true;
+            sender.vScrollBar.Width = ScaleHelper.Scale(17);
+            sender.vScrollBar.Orientation = ScrollBarOrientation.Vertical;
+            sender.vScrollBar.ContextMenuStrip.Renderer = new DockPanelStripRenderer();
+            sender.vScrollBar.Dock = DockStyle.Right;
+            sender.vScrollBar.Margin = new Padding(0, 0, 0, ScaleHelper.Scale(17));
+            sender.hScrollBar = new ScrollBarEx();
+            sender.hScrollBar.Height = ScaleHelper.Scale(17);
+            sender.hScrollBar.Orientation = ScrollBarOrientation.Horizontal;
+            sender.hScrollBar.ContextMenuStrip.Renderer = new DockPanelStripRenderer();
+            sender.hScrollBar.Dock = DockStyle.Bottom;
+            Color foreColor = PluginBase.MainForm.GetThemeColor("ScrollBar.ForeColor");
+            if (foreColor != Color.Empty) sender.AddScrollBars(sender);
+            PluginBase.MainForm.ThemeControls(sender.vScrollBar);
+            PluginBase.MainForm.ThemeControls(sender.hScrollBar);
+            EventManager.AddEventHandler(this, EventType.ApplyTheme);
+        }
+
+        /// <summary>
+        /// Update the scrollbars on sci control ui update
+        /// </summary>
+        private void OnScrollUpdate(ScintillaControl sender)
+        {
+            Int32 vMax = sender.LinesVisible;
+            Int32 vPage = sender.LinesOnScreen;
+            sender.vScrollBar.Scroll -= sender.OnScrollBarScroll;
+            sender.vScrollBar.Minimum = 0;
+            sender.vScrollBar.Maximum = vMax - 1;
+            sender.vScrollBar.LargeChange = vPage;
+            sender.vScrollBar.Value = sender.FirstVisibleLine;
+            sender.vScrollBar.CurrentPosition = vMax > 1 ? sender.VisibleFromDocLine(sender.CurrentLine) : -1;
+            sender.vScrollBar.Scroll += sender.OnScrollBarScroll;
+            sender.hScrollBar.Scroll -= sender.OnScrollBarScroll;
+            sender.hScrollBar.Minimum = 0;
+            sender.hScrollBar.Maximum = sender.ScrollWidth;
+            sender.hScrollBar.LargeChange = sender.Width;
+            sender.hScrollBar.Value = sender.XOffset;
+            sender.hScrollBar.Scroll += sender.OnScrollBarScroll;
+            sender.vScrollBar.Enabled = vMax > 1;
+        }
+
+        /// <summary>
+        /// Update the sci control on scrollbar scroll
+        /// </summary>
+        private void OnScrollBarScroll(Object sender, ScrollEventArgs e)
+        {
+            this.Painted -= this.OnScrollUpdate;
+            if (e.ScrollOrientation == ScrollOrientation.VerticalScroll)
+            {
+                if (e.OldValue != -1) this.FirstVisibleLine = e.NewValue;
+            }
+            else this.XOffset = this.hScrollBar.Value;
+            this.Painted += this.OnScrollUpdate;
+        }
+
+        /// <summary>
+        /// Add controls to container
+        /// </summary>
+        private void AddScrollBars(ScintillaControl sender)
+        {
+            Boolean vScroll = sender.IsVScrollBar;
+            Boolean hScroll = sender.IsHScrollBar;
+            sender.IsVScrollBar = false; // Hide builtin
+            sender.IsHScrollBar = false; // Hide builtin
+            sender.vScrollBar.VisibleChanged += OnResize;
+            sender.hScrollBar.VisibleChanged += OnResize;
+            sender.vScrollBar.Scroll += sender.OnScrollBarScroll;
+            sender.hScrollBar.Scroll += sender.OnScrollBarScroll;
+            sender.Controls.Add(sender.hScrollBar);
+            sender.Controls.Add(sender.vScrollBar);
+            sender.Painted += sender.OnScrollUpdate;
+            sender.IsVScrollBar = vScroll;
+            sender.IsHScrollBar = hScroll;
+            sender.OnResize(null, null);
+        }
+
+        /// <summary>
+        /// Remove controls from container
+        /// </summary>
+        private void RemoveScrollBars(ScintillaControl sender)
+        {
+            Boolean vScroll = sender.IsVScrollBar;
+            Boolean hScroll = sender.IsHScrollBar;
+            sender.vScrollBar.VisibleChanged -= OnResize;
+            sender.hScrollBar.VisibleChanged -= OnResize;
+            sender.vScrollBar.Scroll -= sender.OnScrollBarScroll;
+            sender.hScrollBar.Scroll -= sender.OnScrollBarScroll;
+            sender.Controls.Remove(sender.hScrollBar);
+            sender.Controls.Remove(sender.vScrollBar);
+            sender.Painted -= sender.OnScrollUpdate;
+            sender.IsVScrollBar = vScroll;
+            sender.IsHScrollBar = hScroll;
+            sender.OnResize(null, null);
+        }
+
+        #endregion
+
         #region Scintilla Main
 
         public ScintillaControl() : this("SciLexer.dll")
@@ -50,7 +214,7 @@ namespace ScintillaNet
             {
                 if (Win32.ShouldUseWin32())
                 {
-                    IntPtr lib = LoadLibrary(fullpath);
+                    LoadLibrary(fullpath);
                     hwndScintilla = CreateWindowEx(0, "Scintilla", "", WS_CHILD_VISIBLE_TABSTOP, 0, 0, this.Width, this.Height, this.Handle, 0, new IntPtr(0), null);
                     directPointer = (int)SlowPerform(2185, 0, 0);
                     directPointer = DirectPointer;
@@ -61,6 +225,7 @@ namespace ScintillaNet
                 DoubleClick += new DoubleClickHandler(OnBlockSelect);
                 CharAdded += new CharAddedHandler(OnSmartIndent);
                 Resize += new EventHandler(OnResize);
+                this.InitScrollBars(this);
             }
             catch (Exception ex)
             {
@@ -70,13 +235,16 @@ namespace ScintillaNet
 
         protected override void Dispose(bool disposing)
         {
+            EventManager.RemoveEventHandler(this);
             if (highlightDelay != null) highlightDelay.Stop();
             base.Dispose(disposing);
         }
 
         public void OnResize(object sender, EventArgs e)
         {
-            if (Win32.ShouldUseWin32()) SetWindowPos(this.hwndScintilla, 0, this.ClientRectangle.X, this.ClientRectangle.Y, this.ClientRectangle.Width, this.ClientRectangle.Height, 0);
+            Int32 vsbWidth = this.Controls.Contains(this.vScrollBar) && this.vScrollBar.Visible ? this.vScrollBar.Width : 0;
+            Int32 hsbHeight = this.Controls.Contains(this.hScrollBar) && this.hScrollBar.Visible ? this.hScrollBar.Height : 0;
+            if (Win32.ShouldUseWin32()) SetWindowPos(this.hwndScintilla, 0, ClientRectangle.X, ClientRectangle.Y, ClientRectangle.Width - vsbWidth, ClientRectangle.Height - hsbHeight, 0);
         }
 
         #endregion
@@ -984,7 +1152,7 @@ namespace ScintillaNet
         }
 
         /// <summary>
-        /// Returns the chracter at the caret posiion.
+        /// Returns the chracter at the caret position.
         /// </summary>
         public char CurrentChar
         {
@@ -1312,21 +1480,6 @@ namespace ScintillaNet
             {
                 SPerform(2124 , (uint)(value ? 1 : 0), 0);
             }
-        }
-
-        /// <summary>
-        /// Is the horizontal scroll bar visible? 
-        /// </summary>
-        public bool IsHScrollBar
-        {
-            get 
-            {
-                return SPerform(2131, 0, 0) != 0;
-            }
-            set
-            {
-                SPerform(2130, (uint)(value ? 1 : 0), 0);
-            }
         }   
 
         /// <summary>
@@ -1495,6 +1648,10 @@ namespace ScintillaNet
         /// </summary>
         public int FirstVisibleLine
         {
+            set
+            {
+                SPerform(2613, (uint)value, 0);
+            }
             get 
             {
                 return (int)SPerform(2152, 0, 0);
@@ -1661,17 +1818,6 @@ namespace ScintillaNet
                 SPerform(2198, (uint)value, 0);
             }
         }
-        
-        /// <summary>
-        /// Is a line visible?
-        /// </summary>  
-        public bool IsLineVisible
-        {
-            get 
-            {
-                return SPerform(2228, 0, 0) != 0;
-            }
-        }
 
         /// <summary>
         /// Does a tab pressed when caret is within indentation indent?
@@ -1822,22 +1968,7 @@ namespace ScintillaNet
             {
                 SPerform(2277, (uint)value , 0);
             }
-        }   
-
-        /// <summary>
-        /// Is the vertical scroll bar visible?
-        /// </summary>
-        public bool IsVScrollBar
-        {
-            get 
-            {
-                return SPerform(2281, 0, 0) != 0;
-            }
-            set
-            {
-                SPerform(2280, (uint)(value ? 1 : 0), 0);
-            }
-        }   
+        } 
 
         /// <summary>
         /// Is drawing done in two phases with backgrounds drawn before faoregrounds?
@@ -2285,7 +2416,7 @@ namespace ScintillaNet
         }
 
         /// <summary>
-        /// Sets the focud to the control
+        /// Sets the focus to the control
         /// </summary>
         public new bool Focus()
         {
@@ -2376,7 +2507,15 @@ namespace ScintillaNet
         public int LastChild(int line)
         {
             return (int)SPerform(2224, (uint)line, 0);
-        }   
+        }
+
+        /// <summary>
+        /// Is a line visible?
+        /// </summary>  
+        public bool GetLineVisible(Int32 line)
+        {
+            return SPerform(2228, (uint)line, 0) != 0;
+        }
 
         /// <summary>
         /// Find the parent line of a child line.
@@ -2455,7 +2594,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void StyleSetFont(int style, string fontName)
         {
-            if (fontName == null || fontName.Equals("")) fontName = "\0\0";
+            if (string.IsNullOrEmpty(fontName)) fontName = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(fontName)) 
             {
                 SPerform(2056,(uint)style, (uint)b );
@@ -2516,7 +2655,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void WordChars(string characters)
         {
-            if (characters == null || characters.Equals("")) characters = "\0\0";
+            if (string.IsNullOrEmpty(characters)) characters = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(characters))
             {
                 SPerform(2077, 0, (uint)b);
@@ -2538,7 +2677,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AutoCSetFillUps(string characterSet )
         {
-            if (characterSet == null || characterSet.Equals("")) characterSet = "\0\0";
+            if (string.IsNullOrEmpty(characterSet)) characterSet = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(characterSet))
             {
                 SPerform(2112, 0, (uint)b);
@@ -2590,8 +2729,8 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetProperty(string key, string val)
         {
-            if (key == null || key.Equals("")) key = "\0\0";
-            if (val == null || val.Equals("")) val = "\0\0";
+            if (string.IsNullOrEmpty(key)) key = "\0\0";
+            if (string.IsNullOrEmpty(val)) val = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(val))
             {
                 fixed (byte* b2 = Encoding.GetEncoding(this.CodePage).GetBytes(key))
@@ -2607,7 +2746,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int GetPropertyInt(string key)
         {
-            if (key == null || key.Equals("")) key = "\0\0";
+            if (string.IsNullOrEmpty(key)) key = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(key))
             {
                 return (int)SPerform(4010, (uint)b, 0);
@@ -2619,7 +2758,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void KeyWords(int keywordSet, string keyWords)
         {
-            if (keyWords == null || keyWords.Equals("")) keyWords = "\0\0";
+            if (string.IsNullOrEmpty(keyWords)) keyWords = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(keyWords))
             {
                 SPerform(4005, (uint)keywordSet, (uint)b);
@@ -2631,7 +2770,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void LexerLanguage(string language)
         {
-            if (language == null || language.Equals("")) language = "\0\0";
+            if (string.IsNullOrEmpty(language)) language = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(language))
             {
                 SPerform(4006, 0, (uint)b);
@@ -2811,7 +2950,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AddText(int length, string text )
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                  SPerform(2001,(uint)length, (uint)b);
@@ -2823,7 +2962,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void InsertText(int pos, string text )
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 SPerform(2003, (uint)pos, (uint)b);
@@ -3067,12 +3206,29 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void MarkerDefinePixmap(int markerNumber, string pixmap )
         {
-            if (pixmap == null || pixmap.Equals("")) pixmap = "\0\0";
+            if (string.IsNullOrEmpty(pixmap)) pixmap = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(pixmap))
             {
                  SPerform(2049, (uint)markerNumber, (uint)b);
             }   
-        }           
+        }
+
+        /// <summary>
+        /// Define a marker image from a bitmap. Supports alpha channel.
+        /// </summary>
+        unsafe public void MarkerDefineRGBAImage(int markerNumber, Bitmap image)
+        {
+            var rgba = RGBA.ConvertToRGBA(image);
+            //SCI_RGBAIMAGESETWIDTH
+            SPerform(2624, (uint)image.Width, 0);
+            //SCI_RGBAIMAGESETHEIGHT
+            SPerform(2625, (uint)image.Height, 0);
+            fixed (byte* b = rgba)
+            {
+                //SCI_MARKERDEFINERGBAIMAGE
+                SPerform(2626, (uint)markerNumber, (uint)b);
+            }
+        }
 
         /// <summary>
         /// Reset the default style to its state at startup
@@ -3127,7 +3283,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetStylingEx(int length, string styles)
         {
-            if (styles == null || styles.Equals("")) styles = "\0\0";
+            if (string.IsNullOrEmpty(styles)) styles = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(styles))
             {
                  SPerform(2073,(uint)length, (uint)b);
@@ -3174,7 +3330,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AutoCShow(int lenEntered, string itemList)
         {
-            if (itemList == null || itemList.Equals("")) itemList = "\0\0";
+            if (string.IsNullOrEmpty(itemList)) itemList = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(itemList))
             {
                 SPerform(2100, (uint)lenEntered, (uint)b);
@@ -3202,7 +3358,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AutoCStops(string characterSet)
         {
-            if (characterSet == null || characterSet.Equals("")) characterSet = "\0\0";
+            if (string.IsNullOrEmpty(characterSet)) characterSet = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(characterSet))
             {
                  SPerform(2105, 0, (uint)b);
@@ -3214,7 +3370,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AutoCSelect(string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                  SPerform(2108, 0, (uint)b);
@@ -3226,7 +3382,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void UserListShow(int listType, string itemList)
         {
-            if (itemList == null || itemList.Equals("")) itemList = "\0\0";
+            if (string.IsNullOrEmpty(itemList)) itemList = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(itemList))
             {
                  SPerform(2117, (uint)listType, (uint)b);
@@ -3238,7 +3394,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void RegisterImage(int type, string xpmData)
         {
-            if (xpmData == null || xpmData.Equals("")) xpmData = "\0\0";
+            if (string.IsNullOrEmpty(xpmData)) xpmData = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(xpmData)) 
             {
                  SPerform(2405,(uint)type, (uint)b);
@@ -3365,7 +3521,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void ReplaceSel(string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 SPerform(2170,0 , (uint)b);
@@ -3445,7 +3601,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetText(string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 SPerform(2181, 0, (uint)b);
@@ -3470,7 +3626,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int ReplaceTarget(int length, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 return (int)SPerform(2194, (uint)length, (uint)b);
@@ -3485,9 +3641,9 @@ namespace ScintillaNet
         /// Returns the length of the replacement text including any change
         /// caused by processing the \d patterns.
         /// </summary>
-        unsafe public int ReplaceTargetRE(int length, string text )
+        unsafe public int ReplaceTargetRE(int length, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 return (int) SPerform(2195, (uint)length, (uint)b);
@@ -3501,7 +3657,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int SearchInTarget(int length, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 return (int) SPerform(2197, (uint)length, (uint)b);
@@ -3513,7 +3669,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void CallTipShow(int pos, string definition)
         {
-            if (definition == null || definition.Equals("")) definition = "\0\0";
+            if (string.IsNullOrEmpty(definition)) definition = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(definition)) 
             {
                 SPerform(2200, (uint)pos, (uint)b);
@@ -3648,7 +3804,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int TextWidth(int style, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 return (int)SPerform(2276, (uint)style, (uint)b);
@@ -3668,7 +3824,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void AppendText(int length, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 SPerform(2282, (uint)length, (uint)b);
@@ -4242,7 +4398,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int SearchNext(int flags, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 return (int)SPerform(2367, (uint)flags, (uint)b);
@@ -4255,7 +4411,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public int SearchPrev(int flags, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text)) 
             {
                 return (int)SPerform(2368,(uint)flags, (uint)b);
@@ -4447,7 +4603,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void CopyText(int length, string text)
         {
-            if (text == null || text.Equals(""))text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 SPerform(2420,(uint)length, (uint)b);
@@ -4613,7 +4769,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void WhitespaceChars(string characters)
         {
-            if (characters == null || characters.Equals("")) characters = "\0\0";
+            if (string.IsNullOrEmpty(characters)) characters = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(characters))
             {
                 SPerform(2443, 0, (uint)b);
@@ -4665,7 +4821,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void LoadLexerLibrary(string path)
         {
-            if (path == null || path.Equals("")) path = "\0\0";
+            if (string.IsNullOrEmpty(path)) path = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(path))
             {
                  SPerform(4007, 0, (uint)b);
@@ -4848,7 +5004,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetMarginText(int line, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 SPerform(2530, (uint)line, (uint)b);
@@ -4860,7 +5016,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetMarginStyles(int line, string styles)
         {
-            if (styles == null || styles.Equals("")) styles = "\0\0";
+            if (string.IsNullOrEmpty(styles)) styles = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(styles))
             {
                 SPerform(2534, (uint)line, (uint)b);
@@ -4872,7 +5028,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetAnnotationText(int line, string text)
         {
-            if (text == null || text.Equals("")) text = "\0\0";
+            if (string.IsNullOrEmpty(text)) text = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(text))
             {
                 SPerform(2540, (uint)line, (uint)b);
@@ -4884,7 +5040,7 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetAnnotationStyles(int line, string styles)
         {
-            if (styles == null || styles.Equals("")) styles = "\0\0";
+            if (string.IsNullOrEmpty(styles)) styles = "\0\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(styles))
             {
                 SPerform(2544, (uint)line, (uint)b);
@@ -4982,6 +5138,7 @@ namespace ScintillaNet
         
         #region Scintilla Constants
 
+        public const int MAXDWELLTIME = 10000000;
         private const int WM_NOTIFY = 0x004e;
         private const int WM_SYSCHAR = 0x106;
         private const int WM_COMMAND = 0x0111;
@@ -4992,7 +5149,6 @@ namespace ScintillaNet
         private const uint WS_VISIBLE = (uint)0x10000000L;
         private const uint WS_TABSTOP = (uint)0x00010000L;
         private const uint WS_CHILD_VISIBLE_TABSTOP = WS_CHILD|WS_VISIBLE|WS_TABSTOP;
-        public const int MAXDWELLTIME = 10000000;
         private const int PATH_LEN = 1024;
     
         #endregion
@@ -5395,6 +5551,10 @@ namespace ScintillaNet
                 highlightDelay.SynchronizingObject = this as Control;
             }
             else highlightDelay.Stop();
+            if (highlightDelay.Interval != PluginBase.MainForm.Settings.HighlightMatchingWordsDelay)
+            {
+                highlightDelay.Interval = PluginBase.MainForm.Settings.HighlightMatchingWordsDelay;
+            }
             highlightDelay.Start();
         }
         void highlightDelay_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
@@ -5410,7 +5570,7 @@ namespace ScintillaNet
         {
             if (TextLength == 0 || TextLength > 64 * 1024) return;
             Language language = Configuration.GetLanguage(ConfigurationLanguage);
-            Int32 color = language.editorstyle.SelectionBackgroundColor;
+            Int32 color = language.editorstyle.HighlightWordBackColor;
             String word = GetWordFromPosition(CurrentPos);
             if (String.IsNullOrEmpty(word)) return;
             if (this.PositionIsOnComment(CurrentPos))
@@ -5423,6 +5583,7 @@ namespace ScintillaNet
             search.WholeWord = true; 
             search.NoCase = true;
             search.Filter = SearchFilter.OutsideCodeComments | SearchFilter.OutsideStringLiterals;
+            search.SourceFile = FileName;
             RemoveHighlights(1);
             List<SearchMatch> test = search.Matches(Text);
             AddHighlights(1, test, color);
@@ -5660,6 +5821,22 @@ namespace ScintillaNet
         #endregion 
 
         #region Misc Custom Stuff
+
+        /// <summary>
+        /// Gets the amount of lines visible (ie. not folded)
+        /// </summary>
+        private Int32 LinesVisible
+        {
+            get 
+            {
+                Int32 vlineCount = 0;
+                for (Int32 i = 0; i < LineCount; i++)
+                {
+                    if (this.GetLineVisible(i)) vlineCount++;
+                }
+                return vlineCount;
+            }
+        }
 
         /// <summary>
         /// Set caret to line to indent position and ensure it is visible.
@@ -6438,8 +6615,10 @@ namespace ScintillaNet
             // Define indics in both controls...
             doc.SplitSci1.SetIndicStyle(indicator, indicStyle);
             doc.SplitSci1.SetIndicFore(indicator, highlightColor);
+            doc.SplitSci1.SetIndicSetAlpha(indicator, 40); // Improve contrast
             doc.SplitSci2.SetIndicStyle(indicator, indicStyle);
             doc.SplitSci2.SetIndicFore(indicator, highlightColor);
+            doc.SplitSci2.SetIndicSetAlpha(indicator, 40); // Improve contrast
             this.CurrentIndicator = indicator;
             this.IndicatorValue = 1;
             this.IndicatorFillRange(start, length);
@@ -6470,8 +6649,10 @@ namespace ScintillaNet
                 // Define indics in both controls...
                 doc.SplitSci1.SetIndicStyle(indicator, (Int32)ScintillaNet.Enums.IndicatorStyle.RoundBox);
                 doc.SplitSci1.SetIndicFore(indicator, highlightColor);
+                doc.SplitSci1.SetIndicSetAlpha(indicator, 40); // Improve contrast
                 doc.SplitSci2.SetIndicStyle(indicator, (Int32)ScintillaNet.Enums.IndicatorStyle.RoundBox);
                 doc.SplitSci2.SetIndicFore(indicator, highlightColor);
+                doc.SplitSci2.SetIndicSetAlpha(indicator, 40); // Improve contrast
                 this.CurrentIndicator = indicator;
                 this.IndicatorValue = 1;
                 this.IndicatorFillRange(start, this.MBSafeTextLength(match.Value));

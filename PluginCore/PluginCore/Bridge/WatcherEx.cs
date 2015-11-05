@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.IO;
-using PluginCore.Bridge;
-using PluginCore.Managers;
 using System.Text.RegularExpressions;
+using PluginCore.Managers;
 
 namespace PluginCore.Bridge
 {
@@ -118,7 +115,7 @@ namespace PluginCore.Bridge
             if (fullPath.StartsWith("BRIDGE:"))
             {
                 // Lets expose bridge location...
-                Environment.SetEnvironmentVariable("BRIDGE", fullPath.Replace("BRIDGE:", ""));
+                Environment.SetEnvironmentVariable("FDBRIDGE", fullPath.Replace("BRIDGE:", ""));
                 return;
             }
             if (!fullPath.EndsWith("\\")) fullPath += '\\';

@@ -1,23 +1,26 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Text;
-using System.ComponentModel;
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Windows.Forms;
+using AS3Context.Compiler;
+using AS3Context.Controls;
+using ASCompletion.Commands;
+using ASCompletion.Completion;
+using ASCompletion.Context;
+using ASCompletion.Model;
+using PluginCore;
 using PluginCore.Controls;
-using PluginCore.Localization;
 using PluginCore.Helpers;
+using PluginCore.Localization;
 using PluginCore.Managers;
 using PluginCore.Utilities;
-using AS3Context.Compiler;
-using ASCompletion.Model;
-using ASCompletion.Completion;
-using ASCompletion.Commands;
-using AS3Context.Controls;
+using SwfOp;
 using WeifenLuo.WinFormsUI.Docking;
-using System.Windows.Forms;
-using PluginCore;
-using XMLCompletion;
 
 namespace AS3Context
 {
@@ -33,7 +36,7 @@ namespace AS3Context
         private String settingFilename;
         private String metaEntriesFilename;
         private bool inMXML;
-        private System.Drawing.Image pluginIcon;
+        private Image pluginIcon;
         private ProfilerUI profilerUI;
         private DockContent profilerPanel;
         private ToolStripButton viewButton;
@@ -208,8 +211,8 @@ namespace AS3Context
                         ValidateSettings();
                         AddToolbarItems();
                         // Associate this context with AS3 language
-                        ASCompletion.Context.ASContext.RegisterLanguage(contextInstance, "as3");
-                        ASCompletion.Context.ASContext.RegisterLanguage(contextInstance, "mxml");
+                        ASContext.RegisterLanguage(contextInstance, "as3");
+                        ASContext.RegisterLanguage(contextInstance, "mxml");
 
                         // This event is launched after the first FileSwitch
                         if (PluginBase.MainForm.CurrentDocument.IsEditable)
@@ -369,7 +372,7 @@ namespace AS3Context
 
             string fileName = Path.Combine(container, virtualPath.Substring(p + 2).Replace('.', Path.DirectorySeparatorChar));
             PathModel path = new PathModel(container, contextInstance);
-            SwfOp.ContentParser parser = new SwfOp.ContentParser(path.Path);
+            ContentParser parser = new ContentParser(path.Path);
             parser.Run();
             AbcConverter.Convert(parser, path, contextInstance);
 
@@ -439,6 +442,7 @@ namespace AS3Context
             menu.DropDownItems.Add(viewItem);
 
             viewButton = new ToolStripButton(pluginIcon);
+            viewButton.Name = "ShowProfiler";
             viewButton.ToolTipText = TextHelper.GetString("Label.ViewMenuItem").Replace("&", "");
             PluginBase.MainForm.RegisterSecondaryItem("ViewMenu.ShowProfiler", viewButton);
             viewButton.Click += OpenPanel;
@@ -471,7 +475,7 @@ namespace AS3Context
         /// <summary>
         /// Opens the plugin panel again if closed
         /// </summary>
-        public void OpenPanel(object sender, System.EventArgs e)
+        public void OpenPanel(object sender, EventArgs e)
         {
             if (sender is ToolStripButton && profilerPanel.Visible && profilerPanel.DockState.ToString().IndexOf("AutoHide") < 0)
             {
@@ -668,7 +672,7 @@ namespace AS3Context
                 flashPath = Path.GetDirectoryName(flashPath);
             }
             string basePath = flashPath;
-            string deflang = System.Globalization.CultureInfo.CurrentUICulture.Name;
+            string deflang = CultureInfo.CurrentUICulture.Name;
             deflang = deflang.Substring(0, 2);
             // CS4+ default configuration
             if (Directory.Exists(basePath + "\\Common\\Configuration\\ActionScript 3.0"))
