@@ -44,6 +44,7 @@ namespace ScintillaNet
 
         private ScrollBarEx vScrollBar;
         private ScrollBarEx hScrollBar;
+        private int vScrollMarginOffset;
 
         /// <summary>
         /// Is the vertical scroll bar visible?
@@ -189,6 +190,9 @@ namespace ScintillaNet
             sender.IsVScrollBar = vScroll;
             sender.IsHScrollBar = hScroll;
             sender.OnResize2(null, null);
+            int marginRight = sender.MarginRight;
+            sender.vScrollMarginOffset = sender.vScrollBar.Width;
+            sender.MarginRight = marginRight;
         }
 
         /// <summary>
@@ -208,6 +212,9 @@ namespace ScintillaNet
             sender.IsVScrollBar = vScroll;
             sender.IsHScrollBar = hScroll;
             sender.OnResize2(null, null);
+            int marginRight = sender.MarginRight;
+            sender.vScrollMarginOffset = 0;
+            sender.MarginRight = marginRight;
         }
 
         #endregion
@@ -1733,11 +1740,11 @@ namespace ScintillaNet
         {
             get
             {
-                return (int)SPerform(2158, 0, 0);
+                return (int)SPerform(2158, 0, 0) - vScrollMarginOffset;
             }
             set
             {
-                SPerform(2157, 0, (uint)value);
+                SPerform(2157, 0, (uint)(value + vScrollMarginOffset));
             }
         }
 
