@@ -11,15 +11,6 @@ set PATH=%PATH%;C:\Program Files\7-Zip\
 :: Check for build errors
 if %errorlevel% neq 0 goto :error
 
-:: Build the PluginCore
-msbuild PluginCore\PluginCore.csproj /p:Configuration=Release /p:Platform="AnyCPU" /t:Rebuild
-
-:: Check for build errors
-if %errorlevel% neq 0 goto :error
-
-:: Extract version from HEAD
-call SetVersion.bat
-
 :: Build the solutions
 msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild
 ping -n 5 127.0.0.1 > nul
