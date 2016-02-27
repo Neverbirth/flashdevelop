@@ -14,7 +14,7 @@ set PATH=%PATH%;C:\Program Files\7-Zip\
 if %errorlevel% neq 0 goto :error
 
 :: Build the solutions
-msbuild FlashDevelop.sln /p:Configuration=Release+Tests /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
+msbuild FlashDevelop.sln /p:Configuration=Release+Tests /p:Platform="x86" /t:Rebuild %MSBuildLogger%
 
 :: Done
 exit
