@@ -14,62 +14,7 @@ set PATH=%PATH%;C:\Program Files\7-Zip\
 if %errorlevel% neq 0 goto :error
 
 :: Build the solutions
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
-ping -n 5 127.0.0.1 > nul
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild %MSBuildLogger%
-
-:: Check for build errors
-if %errorlevel% neq 0 goto :error
-
-:: Create the installer
-makensis FlashDevelop\Installer\Installer.nsi
-
-:: Check for nsis errors
-if %errorlevel% neq 0 goto :error
-
-:: Create the archive
-7z a -tzip FlashDevelop\Installer\Binary\FlashDevelop.zip .\FlashDevelop\Bin\Debug\* -xr!.empty
-
-:: Check for 7zip errors
-if %errorlevel% neq 0 goto :error
-
-:haxedevelop
-
-:: Reset bin files
-git clean -f -x -d FlashDevelop\Bin\Debug
-
-:: Remove bad files
-del FlashDevelop\Bin\Debug\StartPage\images\*.* /Q
-for /d %%G in ("FlashDevelop\Bin\Debug\Projects\*ActionScript 3*") do rd /s /q "%%~G"
-
-:: Copy distro files
-xcopy Distros\HaxeDevelop /s /e /y
-
-:: Build the solutions
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
-ping -n 5 127.0.0.1 > nul
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild %MSBuildLogger%
-
-:: Check for build errors
-if %errorlevel% neq 0 goto :error
-
-:: Rename binaries
-ren FlashDevelop\Bin\Debug\FlashDevelop.exe HaxeDevelop.exe
-ren FlashDevelop\Bin\Debug\FlashDevelop64.exe HaxeDevelop64.exe
-ren FlashDevelop\Bin\Debug\FlashDevelop.exe.config HaxeDevelop.exe.config
-ren FlashDevelop\Bin\Debug\FlashDevelop64.exe.config HaxeDevelop64.exe.config
-
-:: Check for build errors
-if %errorlevel% neq 0 goto :error
-
-:: Create the installer
-makensis FlashDevelop\Installer\Installer.nsi
-
-:: Check for nsis errors
-if %errorlevel% neq 0 goto :error
-
-:: Create the archive
-7z a -tzip FlashDevelop\Installer\Binary\HaxeDevelop.zip .\FlashDevelop\Bin\Debug\* -xr!.empty
+msbuild FlashDevelop.sln /p:Configuration=Release+Tests /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
 
 :: Done
 exit
