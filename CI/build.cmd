@@ -6,15 +6,17 @@ set PATH=%PATH%;C:\Program Files (x86)\Git\bin\
 set PATH=%PATH%;C:\Program Files (x86)\NSIS
 set PATH=%PATH%;C:\Program Files\7-Zip\
 
+:: MSBuild logging
+
 :flashdevelop
 
 :: Check for build errors
 if %errorlevel% neq 0 goto :error
 
 :: Build the solutions
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild
+msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
 ping -n 5 127.0.0.1 > nul
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild
+msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild %MSBuildLogger%
 
 :: Check for build errors
 if %errorlevel% neq 0 goto :error
@@ -43,19 +45,10 @@ for /d %%G in ("FlashDevelop\Bin\Debug\Projects\*ActionScript 3*") do rd /s /q "
 :: Copy distro files
 xcopy Distros\HaxeDevelop /s /e /y
 
-:: Build the PluginCore
-msbuild PluginCore\PluginCore.csproj /p:Configuration=Release /p:Platform="AnyCPU" /t:Rebuild
-
-:: Check for build errors
-if %errorlevel% neq 0 goto :error
-
-:: Extract version from HEAD
-call SetVersion.bat
-
 :: Build the solutions
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild
+msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
 ping -n 5 127.0.0.1 > nul
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild
+msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform=x86 /t:Rebuild %MSBuildLogger%
 
 :: Check for build errors
 if %errorlevel% neq 0 goto :error
