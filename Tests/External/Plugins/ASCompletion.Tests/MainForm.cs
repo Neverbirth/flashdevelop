@@ -143,7 +143,7 @@ namespace FlashDevelop
 
         public string GetThemeValue(string id)
         {
-            throw new NotImplementedException();
+            return null;
         }
 
         public Color GetThemeColor(string id)
