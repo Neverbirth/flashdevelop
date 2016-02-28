@@ -1775,7 +1775,6 @@ namespace ASCompletion.Model
                 }
             }
 
-            [Test]
             [Ignore("Not working for now")]
             public void ParseFile_WrongSyntaxCompilerMetaAfterVarWithNoType()
             {
