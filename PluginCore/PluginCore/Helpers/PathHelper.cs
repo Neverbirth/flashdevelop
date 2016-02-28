@@ -20,7 +20,7 @@ namespace PluginCore.Helpers
         {
             get
             {
-                if (PluginBase.MainForm.StandaloneMode) return GetAssemblyPath(Assembly.GetExecutingAssembly());
+                if (PluginBase.MainForm.StandaloneMode) return Path.GetDirectoryName(GetAssemblyPath(Assembly.GetExecutingAssembly()));
                 else return UserAppDir;
             }
         }
