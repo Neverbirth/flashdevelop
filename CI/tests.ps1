@@ -12,7 +12,7 @@ Param (
     $projectBuildNumber
 )
 
-If (Test-Path "nunit-console-x86.exe")
+If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -eq $null)
 {
 	$testFiles = [System.IO.Directory]::GetFiles("..\FlashDevelop\Bin\Debug", "*.Tests.dll")
 	IF ($testFiles.Count -eq 0)
