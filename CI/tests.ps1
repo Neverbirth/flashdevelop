@@ -12,9 +12,9 @@ Param (
     $projectBuildNumber
 )
 
-If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -eq $null)
+If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -ne $null)
 {
-	$testFiles = [System.IO.Directory]::GetFiles("..\FlashDevelop\Bin\Debug", "*.Tests.dll")
+	$testFiles = [System.IO.Directory]::GetFiles("FlashDevelop\Bin\Debug", "*.Tests.dll")
 	IF ($testFiles.Count -eq 0)
     {
     	Write-Output "No test assemblies found"
