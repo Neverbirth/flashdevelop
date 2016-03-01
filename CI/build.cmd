@@ -16,7 +16,7 @@ if %errorlevel% neq 0 goto :error
 :: Build and run the tests
 msbuild FlashDevelop.sln /p:Configuration=Release+Tests /p:Platform="x86" /t:Rebuild %MSBuildLogger%
 
-powershell.exe -file "tests.ps1"
+powershell.exe -file tests.ps1
 
 if %errorlevel% neq 0 goto :error
 

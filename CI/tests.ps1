@@ -25,7 +25,7 @@ If (Test-Path "nunit-console-x86.exe"){
     {
         foreach($testFile in $testFiles)
         {
-            nunit-console-x86.exe $testFile
+            nunit-console-x86.exe "$($testFile.FullName)"
             $wc = New-Object 'System.Net.WebClient'
             $wc.UploadFile("https://ci.appveyor.com/api/testresults/xunit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\TestResult.xml))
         }
