@@ -27,11 +27,11 @@ If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -ne $nul
         {
             nunit-console-x86.exe "$testFile"
             $testErrors = $testErrors -or $LASTEXITCODE -ne 0
-            if ((Test-Path env:\APPVEYOR_JOB_ID) -And (Test-Path TestResult.xml))
-            {
-                $wc = New-Object 'System.Net.WebClient'
-                $wc.UploadFile("https://ci.appveyor.com/api/testresults/nunit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\TestResult.xml))
-            }
+            #if ((Test-Path env:\APPVEYOR_JOB_ID) -And (Test-Path TestResult.xml))
+            #{
+            #    $wc = New-Object 'System.Net.WebClient'
+            #    $wc.UploadFile("https://ci.appveyor.com/api/testresults/nunit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\TestResult.xml))
+            #}
         }
 
         if ($testErrors -eq $true)
