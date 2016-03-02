@@ -26,7 +26,7 @@ del "FlashDevelop\Bin/Debug\*.Tests.*" /Q
 del "FlashDevelop\Bin/Debug\NSubstitute.*" /Q
 del "FlashDevelop\Bin/Debug\nunit.framework.*" /Q
 
-msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="AnyCPU" /t:Rebuild %MSBuildLogger%
+msbuild FlashDevelop.sln /p:Configuration=Release /p:Platform="Any CPU" /t:Rebuild %MSBuildLogger%
 
 :: Check for build errors
 if %errorlevel% neq 0 goto :error
