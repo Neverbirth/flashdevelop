@@ -23,10 +23,14 @@ If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -ne $nul
     {
         #Maybe in the future we want to set categories and priorities
 		$args = ""
-		foreach($testFile in $testFiles)
+		for ($i=0;$i -lt $testFiles.Count; $i++) {
 		{
-	Write-Output "encontrado $testFile"
-			$args = "$args $testFile"
+			$testFile = $testFiles[$i]
+			IF ($i -ne 0)
+			{
+				$args = "$args "
+			}
+			$args = """$testFile"""
 		}
 		nunit-console-x86.exe $args
 		#It turns out it's not needed to upload the file
