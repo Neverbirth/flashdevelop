@@ -23,7 +23,7 @@ If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -ne $nul
     {
         #Maybe in the future we want to set categories and priorities
 		$args = ""
-		for ($i=0;$i -lt $testFiles.Count; $i++) {
+		for ($i=0;$i -lt $testFiles.Count; $i++)
 		{
 			$testFile = $testFiles[$i]
 			IF ($i -ne 0)
