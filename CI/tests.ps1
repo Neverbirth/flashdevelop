@@ -25,6 +25,7 @@ If ((Get-Command "nunit-console-x86.exe" -ErrorAction SilentlyContinue) -ne $nul
 		$args = ""
 		foreach($testFile in $testFiles)
 		{
+	Write-Output "encontrado $testFile"
 			$args = "$args $testFile"
 		}
 		nunit-console-x86.exe $args
