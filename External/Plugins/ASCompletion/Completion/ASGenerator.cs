@@ -1887,6 +1887,7 @@ namespace ASCompletion.Completion
             {
                 int ln = sci.LineFromPosition(funcBodyStart);
 
+                funcBodyStart++;
                 return GetOrSetPointOfInsertion(funcBodyStart, posEnd, ln, sci);
             }
 
