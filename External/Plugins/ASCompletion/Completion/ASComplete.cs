@@ -198,7 +198,7 @@ namespace ASCompletion.Completion
                         else return false;
 
                     case ')':
-                        if (UITools.CallTip.CallTipActive) UITools.CallTip.Hide();
+                        if (CompletionList.CallTip.CallTipActive) CompletionList.CallTip.Hide();
                         return false;
 
                     case '*':
@@ -1274,9 +1274,27 @@ namespace ASCompletion.Completion
         static private string prevParam = "";
         static private string paramInfo = "";
 
+        static private CompletionListControl completionList;
+        /// <summary>
+        /// Target Completion List to use
+        /// </summary>
+        static public CompletionListControl CompletionList
+        {
+            get
+            {
+                if (completionList == null)
+                    completionList = UITools.CompletionList;
+                return completionList;
+            }
+            set
+            {
+                completionList = value;
+            }
+        }
+
         static public bool HasCalltip()
         {
-            return UITools.CallTip.CallTipActive && (calltipDef != null);
+            return CompletionList.CallTip.CallTipActive && (calltipDef != null);
         }
 
         /// <summary>
@@ -1328,17 +1346,17 @@ namespace ASCompletion.Completion
             }
 
             // show calltip
-            if (!UITools.CallTip.CallTipActive || UITools.Manager.ShowDetails != calltipDetails || paramName != prevParam)
+            if (!CompletionList.CallTip.CallTipActive || UITools.Manager.ShowDetails != calltipDetails || paramName != prevParam)
             {
                 prevParam = paramName;
                 calltipDetails = UITools.Manager.ShowDetails;
                 string text = calltipDef + ASDocumentation.GetTipDetails(calltipMember, paramName);
-                UITools.CallTip.CallTipShow(calltipPos - calltipOffset, text, forceRedraw);
+                CompletionList.CallTip.CallTipShow(calltipPos - calltipOffset, text, forceRedraw);
             }
 
             // highlight
-            if ((start < 0) || (end < 0)) UITools.CallTip.CallTipSetHlt(0, 0, true);
-            else UITools.CallTip.CallTipSetHlt(start + 1, end, true);
+            if ((start < 0) || (end < 0)) CompletionList.CallTip.CallTipSetHlt(0, 0, true);
+            else CompletionList.CallTip.CallTipSetHlt(start + 1, end, true);
         }
 
         static private int FindNearSymbolInFunctDef(string defBody, char symbol, int startAt)
@@ -1449,7 +1467,7 @@ namespace ASCompletion.Completion
                     ShowCalltip(Sci, paramIndex, forceRedraw);
                     return true;
                 }
-                else UITools.CallTip.Hide();
+                else CompletionList.CallTip.Hide();
             }
 
             if (!ResolveFunction(Sci, position, autoHide))
