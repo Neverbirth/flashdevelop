@@ -49,6 +49,12 @@ namespace FlashDevelop.Controls
             this.InitializeTimers();
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            EventManager.RemoveEventHandler(this);
+            base.Dispose(disposing);
+        }
+
         #region Internal Events
 
         /// <summary>

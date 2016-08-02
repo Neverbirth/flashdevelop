@@ -99,7 +99,6 @@ namespace FlashDevelop
         private IEditorController editorController;
 
         /* Components */
-        private QuickFind quickFind;
         private DockPanel dockPanel;
         private ToolStrip toolStrip;
         private MenuStrip menuStrip;
@@ -117,9 +116,6 @@ namespace FlashDevelop
         private OpenFileDialog openFileDialog;
         private SaveFileDialog saveFileDialog;
         private PrintPreviewDialog printPreviewDialog;
-        private FRInFilesDialog frInFilesDialog;
-        private FRInDocDialog frInDocDialog;
-        private GoToDialog gotoDialog;
         
         /* Settings */
         private SettingObject appSettings;
@@ -786,9 +782,6 @@ namespace FlashDevelop
         public void InitializeSmartDialogs()
         {
             this.formState = new FormState();
-            this.gotoDialog = new GoToDialog();
-            this.frInFilesDialog = new FRInFilesDialog();
-            this.frInDocDialog = new FRInDocDialog();
         }
 
         /// <summary>
@@ -957,7 +950,6 @@ namespace FlashDevelop
         private void InitializeComponents()
         {
             this.editorController = new WinFormsEditorController(this);
-            this.quickFind = new QuickFind();
             this.dockPanel = new DockPanel();
             this.statusStrip = new StatusStrip();
             this.toolStripPanel = new ToolStripPanel();
@@ -1028,7 +1020,7 @@ namespace FlashDevelop
             //
             this.dockPanel.TabIndex = 2;
             this.dockPanel.DocumentStyle = DocumentStyle.DockingWindow;
-            this.dockPanel.DockWindows[DockState.Document].Controls.Add(this.quickFind);
+            this.dockPanel.DockWindows[DockState.Document].Controls.Add((Control)this.editorController.QuickFindControl);
             this.dockPanel.Dock = DockStyle.Fill;
             this.dockPanel.Extender.FloatDocumentWindowFactory = new CustomFloatDocumentWindowFactory();
             this.dockPanel.Name = "dockPanel";
@@ -1285,7 +1277,7 @@ namespace FlashDevelop
         /// </summary>
         private void OnActivePaneChanged(Object sender, EventArgs e)
         {
-            this.quickFind.ApplyFixedDocumentPadding();
+            //this.quickFind.ApplyFixedDocumentPadding();
         }
 
         /// <summary>
@@ -1325,7 +1317,7 @@ namespace FlashDevelop
             {
                 if (this.CurrentDocument == null) return;
                 this.OnScintillaControlUpdateControl(this.CurrentDocument.SciControl);
-                this.quickFind.CanSearch = this.CurrentDocument.IsEditable;
+                this.editorController.CanSearch = this.CurrentDocument.IsEditable;
                 /**
                 * Bring this newly active document to the top of the tab history
                 * unless you're currently cycling through tabs with the keyboard
@@ -2128,9 +2120,9 @@ namespace FlashDevelop
                     ScintillaManager.ApplySciSettings(document.SplitSci2, true);
                 }
             }
-            this.frInFilesDialog.UpdateSettings();
             this.statusStrip.Visible = this.appSettings.ViewStatusBar;
             this.toolStrip.Visible = this.isFullScreen ? false : this.appSettings.ViewToolBar;
+            this.editorController.ApplyAllSettings();
             ButtonManager.UpdateFlaggedButtons();
             TabTextManager.UpdateTabTexts();
         }
@@ -2221,8 +2213,7 @@ namespace FlashDevelop
         /// </summary>
         public void SetFindText(Object sender, String text)
         {
-            if (sender != this.quickFind) this.quickFind.SetFindText(text);
-            if (sender != this.frInDocDialog) this.frInDocDialog.SetFindText(text);
+            this.editorController.SetFindText(sender, text);
         }
 
         /// <summary>
@@ -2230,8 +2221,7 @@ namespace FlashDevelop
         /// </summary>
         public void SetMatchCase(Object sender, Boolean matchCase)
         {
-            if (sender != this.quickFind) this.quickFind.SetMatchCase(matchCase);
-            if (sender != this.frInDocDialog) this.frInDocDialog.SetMatchCase(matchCase);
+            this.editorController.SetMatchCase(sender, matchCase);
         }
 
         /// <summary>
@@ -2239,8 +2229,7 @@ namespace FlashDevelop
         /// </summary>
         public void SetWholeWord(Object sender, Boolean wholeWord)
         {
-            if (sender != this.quickFind) this.quickFind.SetWholeWord(wholeWord);
-            if (sender != this.frInDocDialog) this.frInDocDialog.SetWholeWord(wholeWord);
+            this.editorController.SetWholeWord(sender, wholeWord);
         }
 
         #endregion
@@ -2837,8 +2826,7 @@ namespace FlashDevelop
         /// </summary>
         public void GoTo(Object sender, System.EventArgs e)
         {
-            if (!this.gotoDialog.Visible) this.gotoDialog.Show();
-            else this.gotoDialog.Activate();
+            this.editorController.GoTo(sender, e);
         }
 
         /// <summary>
@@ -2846,9 +2834,7 @@ namespace FlashDevelop
         /// </summary>
         public void FindNext(Object sender, System.EventArgs e)
         {
-            Boolean update = !Globals.Settings.DisableFindTextUpdating;
-            Boolean simple = !Globals.Settings.DisableSimpleQuickFind && !this.quickFind.Visible;
-            this.frInDocDialog.FindNext(true, update, simple);
+            this.editorController.FindNext(sender, e);
         }
 
         /// <summary>
@@ -2856,9 +2842,7 @@ namespace FlashDevelop
         /// </summary>
         public void FindPrevious(Object sender, System.EventArgs e)
         {
-            Boolean update = !Globals.Settings.DisableFindTextUpdating;
-            Boolean simple = !Globals.Settings.DisableSimpleQuickFind && !this.quickFind.Visible;
-            this.frInDocDialog.FindNext(false, update, simple);
+            this.editorController.FindPrevious(sender, e);
         }
 
         /// <summary>
@@ -2866,8 +2850,7 @@ namespace FlashDevelop
         /// </summary>
         public void FindAndReplace(Object sender, System.EventArgs e)
         {
-            if (!this.frInDocDialog.Visible) this.frInDocDialog.Show();
-            else this.frInDocDialog.Activate();
+            this.editorController.FindAndReplace(sender, e);
         }
 
         /// <summary>
@@ -2881,8 +2864,7 @@ namespace FlashDevelop
             {
                 OpenEditableDocument(file);
             });
-            if (!this.frInDocDialog.Visible) this.frInDocDialog.Show();
-            else this.frInDocDialog.Activate();
+            this.editorController.FindAndReplace(sender, e);
         }
 
         /// <summary>
@@ -2890,8 +2872,7 @@ namespace FlashDevelop
         /// </summary>
         public void FindAndReplaceInFiles(Object sender, System.EventArgs e)
         {
-            if (!this.frInFilesDialog.Visible) this.frInFilesDialog.Show();
-            else this.frInFilesDialog.Activate();
+            this.editorController.FindAndReplaceInFiles(sender, e);
         }
 
         /// <summary>
@@ -2899,11 +2880,7 @@ namespace FlashDevelop
         /// </summary>
         public void FindAndReplaceInFilesFrom(Object sender, System.EventArgs e)
         {
-            ToolStripItem button = (ToolStripItem)sender;
-            String path = ((ItemData)button.Tag).Tag;
-            if (!this.frInFilesDialog.Visible) this.frInFilesDialog.Show(); // Show first..
-            else this.frInFilesDialog.Activate();
-            this.frInFilesDialog.SetFindPath(path);
+            this.editorController.FindAndReplaceInFilesFrom(sender, e);
         }
 
         /// <summary>
@@ -2911,7 +2888,7 @@ namespace FlashDevelop
         /// </summary>
         public void QuickFind(Object sender, System.EventArgs e)
         {
-            this.quickFind.ShowControl();
+            this.editorController.QuickFind(sender, e);
         }
 
         /// <summary>

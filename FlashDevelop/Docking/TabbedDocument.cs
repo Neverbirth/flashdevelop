@@ -30,6 +30,8 @@ namespace FlashDevelop.Docking
             Icon = new Icon(ResourceHelper.GetStream("FlashDevelopIcon.ico"));
             ShowInTaskbar = true;
             editorController = new WinFormsEditorController(this);
+
+            this.Controls.Add((Control)editorController.QuickFindControl);
         }
 
         public CustomFloatWindow(DockPanel dockPanel, DockPane pane, Rectangle bounds)
@@ -39,6 +41,8 @@ namespace FlashDevelop.Docking
             Icon = new Icon(ResourceHelper.GetStream("FlashDevelopIcon.ico"));
             ShowInTaskbar = true;
             editorController = new WinFormsEditorController(this);
+
+            this.Controls.Add((Control) editorController.QuickFindControl);
         }
 
         public override DockState DockState

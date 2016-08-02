@@ -37,9 +37,19 @@ namespace FlashDevelop.Dialogs
         private System.Boolean lookupIsDirty = false;
         private SearchMatch currentMatch = null;
 
-        public FRInDocDialog()
+        private IEditorController ownerController;
+
+        public FRInDocDialog(IEditorController ownerController)
         {
-            this.Owner = Globals.MainForm;
+            if (ownerController == null)
+            {
+                throw new ArgumentNullException("ownerController");
+            }
+
+            this.ownerController = ownerController;
+
+            if (this.ownerController.Owner is Form) this.Owner = (Form) this.ownerController.Owner;
+
             this.Font = Globals.Settings.DefaultFont;
             this.FormGuid = "24910809-a60a-4b7c-8d2a-d53a363f595f";
             this.InitializeComponent();
@@ -414,7 +424,7 @@ namespace FlashDevelop.Dialogs
         /// </summary>
         private void FindComboBoxTextChanged(Object sender, EventArgs e)
         {
-            Globals.MainForm.SetFindText(this, this.findComboBox.Text);
+            ownerController.SetFindText(this, this.findComboBox.Text);
         }
 
         /// <summary>
@@ -606,11 +616,11 @@ namespace FlashDevelop.Dialogs
             }
             if (sender == this.matchCaseCheckBox && !Globals.Settings.DisableFindOptionSync)
             {
-                Globals.MainForm.SetMatchCase(this, this.matchCaseCheckBox.Checked);
+                this.ownerController.SetMatchCase(this, this.matchCaseCheckBox.Checked);
             }
             if (sender == this.wholeWordCheckBox && !Globals.Settings.DisableFindOptionSync)
             {
-                Globals.MainForm.SetWholeWord(this, this.wholeWordCheckBox.Checked);
+                this.ownerController.SetWholeWord(this, this.wholeWordCheckBox.Checked);
             }
         }
 
