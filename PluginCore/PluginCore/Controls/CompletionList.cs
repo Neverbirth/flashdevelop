@@ -42,7 +42,7 @@ namespace PluginCore.Controls
         #endregion
         
         #region Control Creation
-        
+
         /// <summary>
         /// Creates the control 
         /// </summary> 
@@ -272,7 +272,8 @@ namespace PluginCore.Controls
                 set
                 {
                     if (sci.Target == value) return;
- 
+
+                    UITools.CompletionList.Hide();
                     sci.Target = value;
                     ClearControlHierarchy();
                 }

@@ -4603,7 +4603,7 @@ namespace ASCompletion.Completion
             {
                 foreach (InlineRange range in cFile.InlinedRanges)
                 {
-                    if (position > range.Start && position < range.End)
+                    if (position >= range.Start && position <= range.End)
                     {
                         line = sci.LineFromPosition(range.Start) + 1;
                         break;
@@ -4612,15 +4612,33 @@ namespace ASCompletion.Completion
             }
             int firstLine = line;
             bool found = false;
+            bool inComment = false;
             int packageLine = -1;
-            string txt;
-            int indent = 0;
+            string fullLine;
+            int indent = sci.GetLineIndentation(line);
             int skipIfDef = 0;
             Match mImport;
             var importComparer = new CaseSensitiveImportComparer();
             while (line < curLine)
             {
-                txt = sci.GetLine(line++).TrimStart();
+                fullLine = sci.GetLine(line++);
+                string txt = fullLine.TrimStart();
+                // take comments into account
+                if (txt.IndexOf("/*") > -1)
+                {
+                    inComment = true;
+                }
+
+                if (inComment)
+                {
+                    if (txt.IndexOf("*/") > -1)
+                    {
+                        inComment = false;
+                        txt = txt.Substring(txt.IndexOf("*/") + 2).TrimStart();
+                    }
+                    else continue;
+                }
+
                 if (txt.StartsWithOrdinal("package"))
                 {
                     packageLine = line;
@@ -4671,7 +4689,7 @@ namespace ASCompletion.Completion
             sci.LineScroll(0, firstLine - sci.FirstVisibleLine + 1);
 
             ASContext.Context.RefreshContextCache(fullPath);
-            return sci.GetLine(line).Length;
+            return sci.MBSafeTextLength(statement);
         }
         #endregion
 

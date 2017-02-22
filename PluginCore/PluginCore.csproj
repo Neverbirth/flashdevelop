@@ -545,6 +545,7 @@
     <Compile Include="ScintillaNet\Configuration\Lexer.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="ScintillaNet\Configuration\LexerProperty.cs" />
     <Compile Include="ScintillaNet\Configuration\Scintilla.cs">
       <SubType>Code</SubType>
     </Compile>

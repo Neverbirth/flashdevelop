@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -553,7 +554,6 @@ namespace FlashDevelop
                 TabbedDocument tabbedDocument = new TabbedDocument();
                 tabbedDocument.Closing += new System.ComponentModel.CancelEventHandler(this.OnDocumentClosing);
                 tabbedDocument.Closed += new System.EventHandler(this.OnDocumentClosed);
-                //tabbedDocument.DockStateChanged += new System.EventHandler(this.OnDocumentDockStateChanged);
                 tabbedDocument.TabPageContextMenuStrip = this.tabMenu;
                 tabbedDocument.ContextMenuStrip = this.editorMenu;
                 tabbedDocument.Text = Path.GetFileName(file);
@@ -1097,7 +1097,7 @@ namespace FlashDevelop
         /// </summary>
         private void OnMainFormActivate(Object sender, System.EventArgs e)
         {
-            if (this.CurrentDocument == null || this.dockPanel.ActiveDocumentPane.IsFloat) return;
+            if (this.CurrentDocument == null || ((TabbedDocument)this.CurrentDocument).Disposing || this.dockPanel.ActiveDocumentPane.IsFloat) return;
             this.CurrentDocument.Activate(); // Activate the current document
             ButtonManager.UpdateFlaggedButtons();
         }
@@ -1295,10 +1295,11 @@ namespace FlashDevelop
         {
             if (this.dockPanel.ActiveContent != null)
             {
-                if (this.dockPanel.ActiveContent.GetType() == typeof(TabbedDocument))
+                var document = this.dockPanel.ActiveContent as TabbedDocument;
+                if (document != null)
                 {
+                    if (document.Disposing) return;
                     this.panelIsActive = false;
-                    TabbedDocument document = (TabbedDocument)this.dockPanel.ActiveContent;
                     document.Activate();
                 }
                 else this.panelIsActive = true;
@@ -1315,7 +1316,7 @@ namespace FlashDevelop
         {
             try
             {
-                if (this.CurrentDocument == null) return;
+                if (this.CurrentDocument == null || ((TabbedDocument)this.CurrentDocument).Disposing) return;
                 this.OnScintillaControlUpdateControl(this.CurrentDocument.SciControl);
                 this.editorController.CanSearch = this.CurrentDocument.IsEditable;
                 /**
@@ -1441,9 +1442,9 @@ namespace FlashDevelop
             if (this.appSettings.SequentialTabbing)
             {
                 if (TabbingManager.SequentialIndex == 0) this.Documents[0].Activate();
-                else TabbingManager.NavigateTabsSequentially(-1);
+                else TabbingManager.NavigateTabsSequentially(-1, true);
             }
-            else TabbingManager.NavigateTabHistory(0);
+            else TabbingManager.NavigateTabHistory(0, true);
             if (document.IsEditable && !document.IsUntitled)
             {
                 if (this.appSettings.RestoreFileStates) FileStateManager.SaveFileState(document);
@@ -1575,22 +1576,14 @@ namespace FlashDevelop
                 IntPtr hWnd = Win32.WindowFromPoint(new Point(x, y));
                 if (hWnd != IntPtr.Zero)
                 {
-                    ITabbedDocument doc = Globals.CurrentDocument;
-                    if (Control.FromHandle(hWnd) != null)
+                    // Makes some stuff, mainly native or the WB control, to behave better. Doesn't work nice with some dialogs tho
+                    IntPtr ancestorHwnd;
+
+                    if (Control.FromHandle(hWnd) != null || (ancestorHwnd = Win32.GetAncestor(hWnd, 3)) == this.Handle ||
+                        this.dockPanel.FloatWindows.FirstOrDefault(w => w.Handle == ancestorHwnd) != null)
                     {
-                        if (hWnd == doc.SplitSci1.Handle || hWnd == doc.SplitSci2.Handle)
-                        {
-                            if (doc != null && doc.IsEditable)
-                            {
-                                Win32.SendMessage(hWnd, m.Msg, m.WParam, m.LParam);
-                                return true;
-                            }
-                        }
-                        else
-                        {
-                            Win32.SendMessage(hWnd, m.Msg, m.WParam, m.LParam);
-                            return true;
-                        }
+                        Win32.SendMessage(hWnd, m.Msg, m.WParam, m.LParam);
+                        return true;
                     }
                 }
             }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -285,6 +286,8 @@ namespace ScintillaNet
                 DoubleClick += new DoubleClickHandler(OnBlockSelect);
                 CharAdded += new CharAddedHandler(OnSmartIndent);
                 this.InitScrollBars(this);
+
+                Selections = new SelectionCollection(this);
             }
         }
 
@@ -453,6 +456,20 @@ namespace ScintillaNet
             Language lang = sciConfiguration.GetLanguage(value);
             if (lang == null) return;
             StyleClearAll();
+            // Reset previous language lexer properties, sadly there is no way to restore or get default values
+            if (!string.IsNullOrEmpty(this.configLanguage))
+            {
+                Language oldLang = sciConfiguration.GetLanguage(configLanguage);
+                if (oldLang.lexer.properties != null)
+                {
+                    int propCount = oldLang.lexer.properties.Length;
+                    for (int i = 0; i < propCount; i++)
+                    {
+                        var prop = oldLang.lexer.properties[i];
+                        if (prop.defaultValue != null) SetProperty(prop.key, prop.defaultValue);
+                    }
+                }
+            }
             try
             {
                 lang.lexer.key = (int)Enum.Parse(typeof(Enums.Lexer), lang.lexer.name, true);
@@ -745,6 +762,9 @@ namespace ScintillaNet
                 case Enums.Lexer.SML:
                     lexerType = typeof(Lexers.SML);
                     break;
+                case Enums.Lexer.JSON:
+                    lexerType = typeof(Lexers.JSON);
+                    break;
             }
             for (int j = 0; j < lang.usestyles.Length; j++)
             {
@@ -783,6 +803,16 @@ namespace ScintillaNet
                 if (usestyle.HasBold) StyleSetBold(usestyle.key, usestyle.IsBold);
                 if (usestyle.HasItalics) StyleSetItalic(usestyle.key, usestyle.IsItalics);
                 if (usestyle.HasEolFilled) StyleSetEOLFilled(usestyle.key, usestyle.IsEolFilled);
+            }
+            // Set lexer properties used by the language
+            if (lang.lexer.properties != null)
+            {
+                int propCount = lang.lexer.properties.Length;
+                for (int i = 0; i < propCount; i++)
+                {
+                    var prop = lang.lexer.properties[i];
+                    SetProperty(prop.key, prop.value);
+                }
             }
             // Clear the keywords lists 
             for (int j = 0; j < 9; j++) KeyWords(j, "");
@@ -2298,8 +2328,31 @@ namespace ScintillaNet
         }
 
         /// <summary>
-        /// Retrieve the lexing language of the document.
+        /// Gets or sets the rendering technology used.
         /// </summary>
+        /// <returns>
+        /// One of the <see cref="Technology" /> enumeration values.
+        /// The default is <see cref="ScintillaNET.Technology.Default" />.
+        /// </returns>
+        [DefaultValue(Enums.Technology.Default)]
+        [Category("Misc")]
+        [Description("The rendering technology used to draw text.")]
+        public Enums.Technology Technology
+        {
+            get
+            {
+                return (Enums.Technology)SPerform(2631, 0, 0);
+            }
+            set
+            {
+                var technology = (int)value;
+                SPerform(2630, technology, 0);
+            }
+        }
+        
+        /// <summary>
+                 /// Retrieve the lexing language of the document.
+                 /// </summary>
         public int Lexer
         {
             get
@@ -2440,6 +2493,35 @@ namespace ScintillaNet
                 SPerform(2516, value ? 1 : 0, 0);
             }
         }
+
+        /// <summary>
+        /// Gets or sets whether multiple selection is enabled.
+        /// </summary>
+        /// <returns>
+        /// true if multiple selections can be made by holding the CTRL key and dragging the mouse; otherwise, false.
+        /// The default is false.
+        /// </returns>
+        [DefaultValue(false)]
+        public bool MultipleSelection
+        {
+            get
+            {
+                return SPerform(2564, 0, 0) != 0;
+            }
+            set
+            {
+                var multipleSelection = value ? 1 : 0;
+                SPerform(2563, multipleSelection, IntPtr.Zero);
+            }
+        }
+
+        /// <summary>
+        /// Gets a collection representing multiple selections in a <see cref="Scintilla" /> control.
+        /// </summary>
+        /// <returns>A collection of selections.</returns>
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public SelectionCollection Selections { get; private set; }
 
         #endregion
 
@@ -2833,8 +2915,8 @@ namespace ScintillaNet
         /// </summary>
         unsafe public void SetProperty(string key, string val)
         {
-            if (string.IsNullOrEmpty(key)) key = "\0\0";
-            if (string.IsNullOrEmpty(val)) val = "\0\0";
+            key = string.IsNullOrEmpty(key) ? "\0" : key + "\0";
+            val = string.IsNullOrEmpty(val) ? "\0" : val + "\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(val))
             {
                 fixed (byte* b2 = Encoding.GetEncoding(this.CodePage).GetBytes(key))
@@ -2845,15 +2927,72 @@ namespace ScintillaNet
         }
 
         /// <summary>
+        /// Retrieve a "property" value.
+        /// </summary>
+        unsafe public string GetProperty(string key)
+        {
+            if (string.IsNullOrEmpty(key))
+                return string.Empty;
+            key += "\0";
+            fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(key))
+            {
+                var length = SPerform(4008, (int)b, 0);
+                if (length == 0)
+                    return String.Empty;
+
+                var valueBytes = new byte[length + 1];
+                fixed (byte* vb = valueBytes)
+                {
+                    SPerform(4008, (int)b, new IntPtr(vb));
+                    return new string((sbyte*)vb, 0, length, Encoding);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Retrieve a "property" value and expand any embedded property macros.
+        /// </summary>
+        unsafe public string GetPropertyExpanded(string key)
+        {
+            if (string.IsNullOrEmpty(key))
+                return string.Empty;
+            key += "\0";
+            fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(key))
+            {
+                var length = SPerform(4009, (int)b, 0);
+                if (length == 0)
+                    return String.Empty;
+
+                var valueBytes = new byte[length + 1];
+                fixed (byte* vb = valueBytes)
+                {
+                    SPerform(4009, (int)b, new IntPtr(vb));
+                    return new string((sbyte*)vb, 0, length, Encoding);
+                }
+            }
+        }
+
+        /// <summary>
         /// Retrieve a "property" value previously set with SetProperty,
         /// interpreted as an int AFTER any "$()" variable replacement.
         /// </summary>
         unsafe public int GetPropertyInt(string key)
         {
-            if (string.IsNullOrEmpty(key)) key = "\0\0";
+            return GetPropertyInt(key, 0);
+        }
+
+        /// <summary>
+        /// Retrieve a "property" value previously set with SetProperty,
+        /// interpreted as an int AFTER any "$()" variable replacement.
+        /// </summary>
+        unsafe public int GetPropertyInt(string key, int defaultValue)
+        {
+            if (string.IsNullOrEmpty(key))
+                return defaultValue;
+            key += "\0";
             fixed (byte* b = Encoding.GetEncoding(this.CodePage).GetBytes(key))
             {
-                return SPerform(4010, (int)b, 0);
+                return SPerform(4010, (int)b, new IntPtr(defaultValue));
             }
         }
 
@@ -5850,6 +5989,7 @@ namespace ScintillaNet
         {
             if (TextLength == 0 || TextLength > 64 * 1024) return;
             Language language = Configuration.GetLanguage(ConfigurationLanguage);
+            if (language == null) return;
             Int32 color = language.editorstyle.HighlightWordBackColor;
             String word = GetWordFromPosition(CurrentPos);
             if (String.IsNullOrEmpty(word)) return;
@@ -6309,6 +6449,17 @@ namespace ScintillaNet
                 {
                     int fold = sci.GetFoldLevel(i) & foldHeader;
                     if (fold == foldHeader) ppStart = true;
+                    else
+                    {
+                        int foldParent = sci.FoldParent(i);
+                        if (foldParent != -1)
+                        {
+                            pos = sci.PositionFromLine(foldParent);
+                            ind = sci.GetLineIndentation(i);
+                            style = sci.BaseStyleAt(pos + ind);
+                            if (style == lexerPpStyle) ppStart = true;
+                        }
+                    }
                     break;
                 }
             }
@@ -6904,6 +7055,51 @@ namespace ScintillaNet
             if (URIDropped != null) URIDropped(this, files);
         }
 
+        /// <summary>
+        /// Adds an additional selection range to the existing main selection.
+        /// </summary>
+        /// <param name="caret">The zero-based document position to end the selection.</param>
+        /// <param name="anchor">The zero-based document position to start the selection.</param>
+        /// <remarks>A main selection must first have been set by a call to <see cref="SetSelection" />.</remarks>
+        public void AddSelection(int caret, int anchor)
+        {
+            /*var textLength = TextLength;
+            caret = Helpers.Clamp(caret, 0, textLength);
+            anchor = Helpers.Clamp(anchor, 0, textLength);
+
+            caret = Lines.CharToBytePosition(caret);
+            anchor = Lines.CharToBytePosition(anchor);*/
+
+            SPerform(2573, caret, anchor);
+        }
+
+        /// <summary>
+        /// Searches for all instances of the main selection within the <see cref="TargetStart" /> and <see cref="TargetEnd" />
+        /// range and adds any matches to the selection.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="SearchFlags" /> property is respected when searching, allowing additional
+        /// selections to match on different case sensitivity and word search options.
+        /// </remarks>
+        /// <seealso cref="MultipleSelectAddNext" />
+        public void MultipleSelectAddEach()
+        {
+            SPerform(2689, 0, 0);
+        }
+
+        /// <summary>
+        /// Searches for the next instance of the main selection within the <see cref="TargetStart" /> and <see cref="TargetEnd" />
+        /// range and adds any match to the selection.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="SearchFlags" /> property is respected when searching, allowing additional
+        /// selections to match on different case sensitivity and word search options.
+        /// </remarks>
+        /// <seealso cref="MultipleSelectAddNext" />
+        public void MultipleSelectAddNext()
+        {
+            SPerform(2688, 0, 0);
+        }
 
         /// <summary>
         /// Returns the base style (without indicators) byte at the position.
@@ -7709,4 +7905,223 @@ namespace ScintillaNet
 
     }
 
+    /// <summary>
+    /// A multiple selection collection.
+    /// </summary>
+    public class SelectionCollection : IEnumerable<Selection>
+    {
+        private readonly ScintillaControl scintilla;
+
+        /// <summary>
+        /// Provides an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An object that contains all <see cref="Selection" /> objects within the <see cref="SelectionCollection" />.</returns>
+        public IEnumerator<Selection> GetEnumerator()
+        {
+            int count = Count;
+            for (int i = 0; i < count; i++)
+                yield return this[i];
+
+            yield break;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return this.GetEnumerator();
+        }
+
+        /// <summary>
+        /// Gets the number of active selections.
+        /// </summary>
+        /// <returns>The number of selections in the <see cref="SelectionCollection" />.</returns>
+        public int Count
+        {
+            get
+            {
+                return scintilla.SPerform(2570, 0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating whether all selection ranges are empty.
+        /// </summary>
+        /// <returns>true if all selection ranges are empty; otherwise, false.</returns>
+        public bool IsEmpty
+        {
+            get
+            {
+                return scintilla.SPerform(2650, 0, 0) != 0;
+            }
+        }
+
+        /// <summary>
+        /// Gets the <see cref="Selection" /> at the specified zero-based index.
+        /// </summary>
+        /// <param name="index">The zero-based index of the <see cref="Selection" /> to get.</param>
+        /// <returns>The <see cref="Selection" /> at the specified index.</returns>
+        public Selection this[int index]
+        {
+            get
+            {
+                //index = Helpers.Clamp(index, 0, Count - 1);
+                return new Selection(scintilla, index);
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SelectionCollection" /> class.
+        /// </summary>
+        /// <param name="scintilla"></param>
+        public SelectionCollection(ScintillaControl scintilla)
+        {
+            this.scintilla = scintilla;
+        }
+    }
+
+    /// <summary>
+    /// Represents a selection when there are multiple active selections in a <see cref="Scintilla" /> control.
+    /// </summary>
+    public class Selection
+    {
+        private readonly ScintillaControl scintilla;
+
+        /// <summary>
+        /// Gets or sets the anchor position of the selection.
+        /// </summary>
+        /// <returns>The zero-based document position of the selection anchor.</returns>
+        public int Anchor
+        {
+            get
+            {
+                var pos = scintilla.SPerform(2579, Index, 0);
+                //if (pos <= 0)
+                    return pos;
+
+                //return scintilla.Lines.ByteToCharPosition(pos);
+            }
+            set
+            {
+                //value = Helpers.Clamp(value, 0, scintilla.TextLength);
+                //value = scintilla.Lines.CharToBytePosition(value);
+                scintilla.SPerform(2578, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the amount of anchor virtual space.
+        /// </summary>
+        /// <returns>The amount of virtual space past the end of the line offsetting the selection anchor.</returns>
+        public int AnchorVirtualSpace
+        {
+            get
+            {
+                return scintilla.SPerform(2583, Index, 0);
+            }
+            set
+            {
+                //value = Helpers.ClampMin(value, 0);
+                scintilla.SPerform(2582, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the caret position of the selection.
+        /// </summary>
+        /// <returns>The zero-based document position of the selection caret.</returns>
+        public int Caret
+        {
+            get
+            {
+                var pos = scintilla.SPerform(2577, Index, 0);
+                //if (pos <= 0)
+                    return pos;
+
+                //return scintilla.Lines.ByteToCharPosition(pos);
+            }
+            set
+            {
+                //value = Helpers.Clamp(value, 0, scintilla.TextLength);
+                //value = scintilla.Lines.CharToBytePosition(value);
+                scintilla.SPerform(2576, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the amount of caret virtual space.
+        /// </summary>
+        /// <returns>The amount of virtual space past the end of the line offsetting the selection caret.</returns>
+        public int CaretVirtualSpace
+        {
+            get
+            {
+                return scintilla.SPerform(2581, Index, 0);
+            }
+            set
+            {
+                //value = Helpers.ClampMin(value, 0);
+                scintilla.SPerform(2580, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the end position of the selection.
+        /// </summary>
+        /// <returns>The zero-based document position where the selection ends.</returns>
+        public int End
+        {
+            get
+            {
+                var pos = scintilla.SPerform(2587, Index, 0);
+                //if (pos <= 0)
+                    return pos;
+
+                //return scintilla.Lines.ByteToCharPosition(pos);
+            }
+            set
+            {
+                //value = Helpers.Clamp(value, 0, scintilla.TextLength);
+                //value = scintilla.Lines.CharToBytePosition(value);
+                scintilla.SPerform(2586, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Gets the selection index.
+        /// </summary>
+        /// <returns>The zero-based selection index within the <see cref="SelectionCollection" /> that created it.</returns>
+        public int Index { get; private set; }
+
+        /// <summary>
+        /// Gets or sets the start position of the selection.
+        /// </summary>
+        /// <returns>The zero-based document position where the selection starts.</returns>
+        public int Start
+        {
+            get
+            {
+                var pos = scintilla.SPerform(2585, Index, 0);
+                //if (pos <= 0)
+                    return pos;
+
+                //return scintilla.Lines.ByteToCharPosition(pos);
+            }
+            set
+            {
+                //value = Helpers.Clamp(value, 0, scintilla.TextLength);
+                //value = scintilla.Lines.CharToBytePosition(value);
+                scintilla.SPerform(2584, Index, new IntPtr(value));
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Selection" /> class.
+        /// </summary>
+        /// <param name="scintilla">The <see cref="Scintilla" /> control that created this selection.</param>
+        /// <param name="index">The index of this selection within the <see cref="SelectionCollection" /> that created it.</param>
+        public Selection(ScintillaControl scintilla, int index)
+        {
+            this.scintilla = scintilla;
+            Index = index;
+        }
+    }
 }

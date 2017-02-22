@@ -81,16 +81,19 @@ namespace ScintillaNet.Lexers
         HASHQUOTEDSTRING = 22,
         PREPROCESSORCOMMENT = 23,
         PREPROCESSORCOMMENTDOC = 24,
-        WORD3 = 24,
-        WORD4 = 25,
-        WORD5 = 26,
+        USERLITERAL = 25,
+        TASKMARKER = 26,
+        ESCAPESEQUENCE = 27,
         GDEFAULT = 32,
         LINENUMBER = 33,
         BRACELIGHT = 34,
         BRACEBAD = 35,
         CONTROLCHAR = 36,
         INDENTGUIDE = 37,
-        LASTPREDEFINED = 39
+        LASTPREDEFINED = 39,
+        WORD3 = 100,
+        WORD4 = 101,
+        WORD5 = 102
     }
 
     public enum BULLANT
@@ -1336,7 +1339,7 @@ namespace ScintillaNet.Lexers
     }
     
     public enum YAML
-    {    
+    {
         DEFAULT = 0,
         COMMENT = 1,
         IDENTIFIER = 2,
@@ -2373,6 +2376,31 @@ namespace ScintillaNet.Lexers
         COMMENT1 = 13,
         COMMENT2 = 14,
         COMMENT3 = 15,
+        GDEFAULT = 32,
+        LINENUMBER = 33,
+        BRACELIGHT = 34,
+        BRACEBAD = 35,
+        CONTROLCHAR = 36,
+        INDENTGUIDE = 37,
+        LASTPREDEFINED = 39
+    }
+
+    public enum JSON
+    {
+        DEFAULT = 0,
+        NUMBER = 1,
+        STRING = 2,
+        STRINGEOL = 3,
+        PROPERTYNAME = 4,
+        ESCAPESEQUENCE = 5,
+        LINECOMMENT = 6,
+        BLOCKCOMMENT = 7,
+        OPERATOR = 8,
+        URI = 9,
+        COMPACTIRI = 10,
+        KEYWORD = 11,
+        LDKEYWORD = 12,
+        ERROR = 13,
         GDEFAULT = 32,
         LINENUMBER = 33,
         BRACELIGHT = 34,

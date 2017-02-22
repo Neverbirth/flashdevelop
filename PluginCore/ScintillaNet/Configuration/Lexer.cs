@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Xml.Serialization;
 
 namespace ScintillaNet.Configuration
@@ -14,7 +15,9 @@ namespace ScintillaNet.Configuration
 
         [XmlAttribute("style-bits")]
         public int stylebits;
-        
+
+        [XmlElement("property")]
+        public LexerProperty[] properties;
     }
     
 }

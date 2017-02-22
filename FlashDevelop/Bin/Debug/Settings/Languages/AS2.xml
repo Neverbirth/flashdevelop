@@ -33,7 +33,9 @@
 	</keyword-classes>
 	<languages>
 		<language name="as2">
-			<lexer name="cpp" style-bits="7" />
+			<lexer name="cpp" style-bits="7">
+				<property key="lexer.cpp.comment.escape.sequence" value="0" default="1"/>
+			</lexer>
 			<character-class><![CDATA[qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM0123456789_$]]></character-class>
 			<line-comment><![CDATA[//]]></line-comment>
 			<comment-start><![CDATA[/*]]></comment-start>

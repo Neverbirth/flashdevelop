@@ -266,6 +266,7 @@ namespace FlashDevelop.Managers
                 sci.SetProperty("fold.html", Convert.ToInt32(settings.FoldHtml).ToString());
                 sci.SetProperty("lexer.cpp.track.preprocessor", "0");
                 sci.SetVirtualSpaceOptions((Int32)settings.VirtualSpaceMode);
+                sci.MultipleSelection = true;
                 sci.SetFoldFlags((Int32)settings.FoldFlags);
                 /**
                 * Set if themes should colorize the first margin

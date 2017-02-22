@@ -355,7 +355,8 @@ namespace PluginCore.Controls
             //    SendChar(sci, value);
             //    return;
             //}
-            
+
+            if (CompletionList.Active && CompletionList.CharacterClass.IndexOf((char) value) >= 0) return;
             SendChar(sci, value);
         }
 

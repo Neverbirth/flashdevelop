@@ -11,9 +11,10 @@ namespace ScintillaNet.Configuration
     [Serializable()]
     public class Language : ConfigItem
     {
+        [XmlElement("lexer")]
         public Lexer lexer;
         
-        [XmlAttribute()]
+        [XmlAttribute("name")]
         public string name;
         
         [XmlElement("line-comment")]

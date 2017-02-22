@@ -161,6 +161,9 @@ namespace PluginCore
         public static extern IntPtr WindowFromPoint(Point pt);
 
         [DllImport("user32.dll")]
+        public static extern IntPtr GetAncestor(IntPtr hWnd, UInt32 flags);
+
+        [DllImport("user32.dll")]
         public static extern Boolean ShowScrollBar(IntPtr hWnd, Int32 wBar, Boolean bShow);
 
         [DllImport("user32.dll")]

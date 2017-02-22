@@ -233,12 +233,12 @@ namespace PluginCore.Controls
             {
                 if (!host.IsEditable)
                 {
-                    if (isActive) Hide();
+                    Hide();
                     return;
                 }
-                if ((itemList == null) || (itemList.Count == 0))
+                if (itemList == null || itemList.Count == 0)
                 {
-                    if (isActive) Hide();
+                    Hide();
                     return;
                 }
             }
@@ -274,11 +274,12 @@ namespace PluginCore.Controls
             // state
             if (!isActive)
             {
+                isActive = true;
+
                 // track key input
                 host.KeyDown += Target_KeyDown;
                 host.KeyPress += Target_KeyPress;
             }
-            isActive = true;
             tempoTip.Enabled = false;
             showTime = DateTime.Now.Ticks;
             disableSmartMatch = noAutoInsert || PluginBase.MainForm.Settings.DisableSmartMatch;
@@ -354,7 +355,7 @@ namespace PluginCore.Controls
         /// </summary> 	
         public void Hide()
         {
-            if (completionList != null && isActive)
+            if (isActive)
             {
                 RemoveHandlers();
                 tempo.Enabled = false;
@@ -362,7 +363,7 @@ namespace PluginCore.Controls
                 fullList = false;
                 bool visible = listHost.Visible;
                 listHost.Close();
-                if (completionList.Items.Count > 0) completionList.Items.Clear();
+                if (completionList != null && completionList.Items.Count > 0) completionList.Items.Clear();
                 currentItem = null;
                 allItems = null;
                 Tip.Hide();
@@ -376,7 +377,7 @@ namespace PluginCore.Controls
         /// </summary> 	
         public void Hide(char trigger)
         {
-            if (completionList != null && isActive)
+            if (isActive)
             {
                 Hide();
                 if (!host.IsEditable) return;

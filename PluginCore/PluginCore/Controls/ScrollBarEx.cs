@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Windows.Forms.Design;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using PluginCore.Helpers;
 using PluginCore.Managers;
 
@@ -162,6 +163,52 @@ namespace PluginCore.Controls
             }
         }
 
+        public void DrawToBitmapEx(Bitmap bitmap, Rectangle targetBounds)
+        {
+
+            if (bitmap == null)
+            {
+                throw new ArgumentNullException("bitmap");
+            }
+
+            if (targetBounds.Width <= 0 || targetBounds.Height <= 0
+                || targetBounds.X < 0 || targetBounds.Y < 0)
+            {
+                throw new ArgumentException("targetBounds");
+            }
+
+
+            int width = Math.Min(this.Parent.Width, targetBounds.Width);
+            int height = Math.Min(this.Parent.Height, targetBounds.Height);
+
+            using (Bitmap image = new Bitmap(width, height, bitmap.PixelFormat))
+            {
+                using (Graphics g = Graphics.FromImage(image))
+                {
+                    IntPtr hDc = g.GetHdc();
+                    //send the actual wm_print message
+                    SendMessage(new HandleRef(Parent, Parent.Handle), /*WM_PRINT*/0x0317, hDc,
+                        (IntPtr)(/*PRF_CLIENT*/ 0x00000004 | 0x00000008));
+
+                    //now BLT the result to the destination bitmap.
+                    using (Graphics destGraphics = Graphics.FromImage(bitmap))
+                    {
+                        IntPtr desthDC = destGraphics.GetHdc();
+                        BitBlt(new HandleRef(destGraphics, desthDC), targetBounds.X, targetBounds.Y, width, height,
+                                                 new HandleRef(g, hDc), 0, 0, 0xcc0020);
+                        destGraphics.ReleaseHdcInternal(desthDC);
+                    }
+
+                    g.ReleaseHdcInternal(hDc);
+                }
+            }
+        }
+        [DllImport("gdi32.dll", SetLastError = true, ExactSpelling = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        public static extern bool BitBlt(HandleRef hDC, int x, int y, int nWidth, int nHeight,
+                                        HandleRef hSrcDC, int xSrc, int ySrc, int dwRop);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern IntPtr SendMessage(HandleRef hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        static int count = 0;
         /// <summary>
         /// Draws the background.
         /// </summary>
@@ -169,7 +216,43 @@ namespace PluginCore.Controls
         /// <param name="rect">The rectangle in which to paint.</param>
         private void DrawBackgroundVertical(Graphics g, Rectangle rect)
         {
-            using (Brush brush = new SolidBrush(this.Enabled ? backColor : backColorDisabled))
+            bool alpha = false;
+            if (Parent != null)
+            {
+                Control c = Parent;
+                if (c.Bounds.IntersectsWith(Bounds) && c.Visible)
+                {
+                    /*alpha = true;
+                    Bitmap bmp = new Bitmap(c.Width, c.Height);
+                    this.Left = c.Width - 10;
+                    DrawToBitmapEx(bmp, c.ClientRectangle);
+                    bmp.Save(@"F:\!HECTOR_WORKS!\extract interface\Settings\asd" + (count++) + ".jpg");
+
+                    //g.TranslateTransform(c.Left - Left, c.Top - Top);
+                    //g.DrawImageUnscaled(bmp, Point.Empty);
+                    //g.TranslateTransform(Left - c.Left, Top - c.Top);
+                    bmp.Dispose();*/
+                }
+
+                int index = Parent.Controls.GetChildIndex(this);
+
+                for (int i = Parent.Controls.Count - 1; i > index; i--)
+                {
+                    c = Parent.Controls[i];
+                  /*  if (c.Bounds.IntersectsWith(Bounds) && c.Visible)
+                    {
+                        alpha = true;
+                        Bitmap bmp = new Bitmap(c.Width, c.Height, g);
+                        c.DrawToBitmap(bmp, c.ClientRectangle);
+
+                        g.TranslateTransform(c.Left - Left, c.Top - Top);
+                        g.DrawImageUnscaled(bmp, Point.Empty);
+                        g.TranslateTransform(Left - c.Left, Top - c.Top);
+                        bmp.Dispose();
+                    }*/
+                }
+            }
+            using (Brush brush = new SolidBrush(Color.FromArgb(alpha ? 128 : 255, this.Enabled ? backColor : backColorDisabled)))
             {
                 g.FillRectangle(brush, rect);
             }

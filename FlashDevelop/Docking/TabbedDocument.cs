@@ -161,14 +161,19 @@ namespace FlashDevelop.Docking
             // If we are currently inside a floating document window, open our new TabbedDocument inside it
             if (this.DockPanel.ActiveDocumentPane != null && this.DockPanel.ActiveDocumentPane.IsFloat)
             {
-                foreach (DockPane pane in DockPanel.Panes)
-                    if (pane.DockState == DockState.Document)
-                    {
-                        this.PanelPane = pane;
-                        break;
-                    }
-                this.FloatPane = this.DockPanel.ActiveDocumentPane;
-                this.DockState = DockState.FloatDocument;
+                if (this.DockPanel.ActivePane.ParentForm != Globals.MainForm)
+                {
+                    foreach (DockPane pane in DockPanel.Panes)
+                        if (pane.DockState == DockState.Document)
+                        {
+                            this.PanelPane = pane;
+                            break;
+                        }
+                    this.FloatPane = this.DockPanel.ActiveDocumentPane;
+                    this.DockState = DockState.FloatDocument;
+
+                    if (this.DockPanel.ActivePane != this.DockPanel.ActiveDocumentPane) this.DockPanel.ActiveDocumentPane.Activate();
+                }
             }
             this.Font = Globals.Settings.DefaultFont;
             this.DockAreas = DockAreas.Document | DockAreas.FloatDocument;

@@ -493,7 +493,31 @@ namespace ScintillaNet.Enums
         SORCUS = 94,
         POWERPRO = 95,
         NIMROD = 96,
-        SML = 97
+        SML = 97,
+        MARKDOWN = 98,
+        TXT2TAGS = 99,
+        A68K = 100,
+        MODULA = 101,
+        COFFEESCRIPT = 102,
+        TCMD = 103,
+        AVS = 104,
+        ECL = 105,
+        OSCRIPT = 106,
+        VISUALPROLOG = 107,
+        LITERATEHASKELL = 108,
+        STTXT = 109,
+        KVIRC = 110,
+        RUST = 111,
+        DMAP = 112,
+        AS = 113,
+        DMIS = 114,
+        REGISTRY = 115,
+        BIBTEX = 116,
+        SREC = 117,
+        IHEX = 118,
+        TEHEX = 119,
+        JSON = 120,
+        AUTOMATIC = 1000
     }
 
     public enum HighlightMatchingWordsMode
@@ -501,5 +525,22 @@ namespace ScintillaNet.Enums
         SelectionOrPosition,
         SelectedWord,
         None
+    }
+
+    /// <summary>
+    /// The rendering technology used in a <see cref="Scintilla" /> control.
+    /// </summary>
+    public enum Technology
+    {
+        /// <summary>
+        /// Renders text using GDI. This is the default.
+        /// </summary>
+        Default = 0,
+
+        /// <summary>
+        /// Renders text using Direct2D/DirectWrite. Since Direct2D buffers drawing,
+        /// Scintilla's buffering can be turned off with <see cref="Scintilla.BufferedDraw" />.
+        /// </summary>
+        DirectWrite = 1
     }
 }
