@@ -246,6 +246,7 @@ namespace FlashDevelop.Managers
                 sci.UseHighlightGuides = !settings.HighlightGuide;
                 sci.Indent = settings.IndentSize;
                 sci.SmartIndentType = settings.SmartIndentType;
+                sci.Technology = settings.DrawingTechnology;
                 sci.IsBackSpaceUnIndents = settings.BackSpaceUnIndents;
                 sci.IsCaretLineVisible = settings.CaretLineVisible;
                 sci.IsIndentationGuides = settings.ViewIndentationGuides;

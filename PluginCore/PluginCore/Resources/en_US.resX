@@ -6197,4 +6197,8 @@ AND - All conditions are met.</value>
     <value>Goto Type Declaration</value>
     <comment>Added after 5.2.1</comment>
   </data>
+  <data name="FlashDevelop.Description.DrawingTechnology" xml:space="preserve">
+    <value>Technology used for drawing text inside the editor. DirectWrite supports advanced features like ligatures.</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
 </root>

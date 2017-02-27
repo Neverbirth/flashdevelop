@@ -204,6 +204,17 @@ namespace FlashDevelop.Settings
             set { this.defaultFont = value; }
         }
 
+        [XmlIgnore]
+        [DisplayName("Text Drawing Technology")]
+        [LocalizedCategory("FlashDevelop.Category.Display")]
+        [LocalizedDescription("FlashDevelop.Description.DrawingTechnology")]
+        [DefaultValue(Technology.Default)]
+        [RequiresRestart]
+        public Technology DrawingTechnology
+        {
+            get; set;
+        }
+
         #endregion
 
         #region Editor

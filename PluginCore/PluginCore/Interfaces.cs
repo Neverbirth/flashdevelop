@@ -527,6 +527,7 @@ namespace PluginCore
         EndOfLine EOLMode { get; set; }
         FoldFlag FoldFlags { get; set; }
         SmartIndent SmartIndentType { get; set; }
+        Technology DrawingTechnology { get; set; }
         VirtualSpaceMode VirtualSpaceMode { get; set; }
         IndentView IndentView { get; set; }
         HighlightMatchingWordsMode HighlightMatchingWordsMode { get; set; }
