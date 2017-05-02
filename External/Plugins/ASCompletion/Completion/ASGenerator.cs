@@ -4510,7 +4510,18 @@ namespace ASCompletion.Completion
         /// <returns>Inserted characters count</returns>
         public static int InsertImport(MemberModel member, bool fixScrolling)
         {
-            ScintillaControl sci = ASContext.CurSciControl;
+            return InsertImport(ASContext.CurSciControl, member, fixScrolling);
+        }
+
+        /// <summary>
+        /// Add an 'import' statement in a document
+        /// </summary>
+        /// <param name="sci">The ScintillaControl instance hosting the document to modify</param>
+        /// <param name="member">Generates 'import {member.Type};'</param>
+        /// <param name="fixScrolling">Keep the editor view as if we didn't add any code in the file</param>
+        /// <returns>Inserted characters count</returns>
+        public static int InsertImport(ScintillaControl sci, MemberModel member, bool fixScrolling)
+        {
             FileModel cFile = ASContext.Context.CurrentModel;
             int position = sci.CurrentPos;
             int curLine = sci.LineFromPosition(position);
@@ -4532,7 +4543,7 @@ namespace ASCompletion.Completion
             {
                 foreach (InlineRange range in cFile.InlinedRanges)
                 {
-                    if (position > range.Start && position < range.End)
+                    if (position >= range.Start && position <= range.End)
                     {
                         line = sci.LineFromPosition(range.Start) + 1;
                         break;
@@ -4541,15 +4552,33 @@ namespace ASCompletion.Completion
             }
             int firstLine = line;
             bool found = false;
+            bool inComment = false;
             int packageLine = -1;
-            string txt;
-            int indent = 0;
+            string fullLine;
+            int indent = sci.GetLineIndentation(line);
             int skipIfDef = 0;
             Match mImport;
             var importComparer = new CaseSensitiveImportComparer();
             while (line < curLine)
             {
-                txt = sci.GetLine(line++).TrimStart();
+                fullLine = sci.GetLine(line++);
+                string txt = fullLine.TrimStart();
+                // take comments into account
+                if (txt.IndexOf("/*") > -1)
+                {
+                    inComment = true;
+                }
+
+                if (inComment)
+                {
+                    if (txt.IndexOf("*/") > -1)
+                    {
+                        inComment = false;
+                        txt = txt.Substring(txt.IndexOf("*/") + 2).TrimStart();
+                    }
+                    else continue;
+                }
+
                 if (txt.StartsWithOrdinal("package"))
                 {
                     packageLine = line;
@@ -4600,7 +4629,7 @@ namespace ASCompletion.Completion
             sci.LineScroll(0, firstLine - sci.FirstVisibleLine + 1);
 
             ASContext.Context.RefreshContextCache(fullPath);
-            return sci.GetLine(line).Length;
+            return sci.MBSafeTextLength(statement);
         }
         #endregion
 

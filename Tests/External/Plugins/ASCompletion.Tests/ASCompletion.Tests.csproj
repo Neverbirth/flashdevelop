@@ -569,6 +569,16 @@
     <EmbeddedResource Include="Test Files\generated\haxe\AfterGenerateFunction_issue103_20.hx" />
     <EmbeddedResource Include="Test Files\generated\haxe\BeforeGenerateFunction_issue103_21.hx" />
     <EmbeddedResource Include="Test Files\generated\haxe\AfterGenerateFunction_issue103_21.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterInsertImport_commentedBlock.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterInsertImport_compileDirectives.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterInsertImport_empty.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterInsertImport_emptyNoPackage.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterInsertImport_normal.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_commentedBlock.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_compileDirectives.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_empty.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_emptyNoPackage.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_normal.hx" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\External\Plugins\AS2Context\AS2Context.csproj">

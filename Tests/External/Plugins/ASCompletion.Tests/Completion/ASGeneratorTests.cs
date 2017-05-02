@@ -130,6 +130,58 @@ namespace ASCompletion.Completion
             }
         }
 
+        public class InsertImport : ASGeneratorTests
+        {
+            [TestFixtureSetUp]
+            public void InsertImportSetup()
+            {
+                var pluginMain = Substitute.For<PluginMain>();
+                var pluginUiMock = new PluginUIMock(pluginMain);
+                pluginMain.MenuItems.Returns(new List<System.Windows.Forms.ToolStripItem>());
+                pluginMain.Settings.Returns(new GeneralSettings());
+                pluginMain.Panel.Returns(pluginUiMock);
+                ASContext.GlobalInit(pluginMain);
+                ASContext.Context = Substitute.For<IASContext>();
+            }
+
+            public IEnumerable<TestCaseData> InsertImportTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_normal"),
+                        new MemberModel { Type = "import flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImport_normal"), 36).SetName("SimpleImportBlock");
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_empty"),
+                        new MemberModel { Type = "import flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImport_empty"), 36).SetName("SimpleImportBlock");
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImportNoPackage_empty"),
+                        new MemberModel { Type = "import flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImportNoPackage_empty"), 36).SetName("SimpleImportBlock");
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_commentedBlock"), 
+                        new MemberModel {Type = "import flash.display.MovieClip" }, 
+                        ReadAllTextHaxe("AfterInsertImport_commentedBlock"), 36).SetName("AfterCommentedBlock");
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_compileDirectives"),
+                        new MemberModel { Type = "import flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImport_compileDirectives"), 36).SetName("AfterCommentedBlock");
+                }
+            }
+
+            [Test, TestCaseSource(nameof(InsertImportTestCases))]
+            public void Common(string text, MemberModel model, string resultText, int addedSize)
+            {
+                var sci = GetBaseScintillaControl();
+                sci.Text = text;
+                SnippetHelper.PostProcessSnippets(sci, 0);
+                sci.ConfigurationLanguage = "haxe";
+                sci.Colourise(0, -1);
+                ASContext.Context.CurrentModel.Returns(new FileModel());
+                int size = ASGenerator.InsertImport(sci, model, false);
+
+                Assert.AreEqual(addedSize, size);
+                Assert.AreEqual(resultText, sci.Text);
+            }
+        }
+
         [TestFixture]
         public class ContextualActions : ASGeneratorTests
         {
