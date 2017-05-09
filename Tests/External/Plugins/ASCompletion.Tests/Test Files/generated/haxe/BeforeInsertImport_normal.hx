@@ -1,5 +1,6 @@
 ﻿package;
 
+import flash.display.Loader;
 import flash.display.Sprite;
 
 class Main {

@@ -6,5 +6,6 @@ import flash.display.Stage;
 
 class Main {
 	public function new() {
+		
 	}
 }

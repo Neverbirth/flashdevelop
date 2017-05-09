@@ -149,20 +149,20 @@ namespace ASCompletion.Completion
                 get
                 {
                     yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_normal"),
-                        new MemberModel { Type = "import flash.display.MovieClip" },
-                        ReadAllTextHaxe("AfterInsertImport_normal"), 36).SetName("SimpleImportBlock");
+                        new MemberModel { Type = "flash.display.Stage" },
+                        ReadAllTextHaxe("AfterInsertImport_normal"), 29).SetName("SimpleImportBlock");
                     yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_empty"),
-                        new MemberModel { Type = "import flash.display.MovieClip" },
-                        ReadAllTextHaxe("AfterInsertImport_empty"), 36).SetName("SimpleImportBlock");
-                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImportNoPackage_empty"),
-                        new MemberModel { Type = "import flash.display.MovieClip" },
-                        ReadAllTextHaxe("AfterInsertImportNoPackage_empty"), 36).SetName("SimpleImportBlock");
+                        new MemberModel { Type = "flash.display.Loader" },
+                        ReadAllTextHaxe("AfterInsertImport_empty"), 30).SetName("EmptyImportBlock");
+                    yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_emptyNoPackage"),
+                        new MemberModel { Type = "flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImport_emptyNoPackage"), 36).SetName("NoPackage");
                     yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_commentedBlock"), 
-                        new MemberModel {Type = "import flash.display.MovieClip" }, 
+                        new MemberModel {Type = "flash.display.MovieClip" }, 
                         ReadAllTextHaxe("AfterInsertImport_commentedBlock"), 36).SetName("AfterCommentedBlock");
                     yield return new TestCaseData(ReadAllTextHaxe("BeforeInsertImport_compileDirectives"),
-                        new MemberModel { Type = "import flash.display.MovieClip" },
-                        ReadAllTextHaxe("AfterInsertImport_compileDirectives"), 36).SetName("AfterCommentedBlock");
+                        new MemberModel { Type = "flash.display.MovieClip" },
+                        ReadAllTextHaxe("AfterInsertImport_compileDirectives"), 36).SetName("WithCompiledDirectives");
                 }
             }
 
@@ -174,7 +174,7 @@ namespace ASCompletion.Completion
                 SnippetHelper.PostProcessSnippets(sci, 0);
                 sci.ConfigurationLanguage = "haxe";
                 sci.Colourise(0, -1);
-                ASContext.Context.CurrentModel.Returns(new FileModel());
+                ASContext.Context.CurrentModel.Returns(new FileModel {haXe = true});
                 int size = ASGenerator.InsertImport(sci, model, false);
 
                 Assert.AreEqual(addedSize, size);

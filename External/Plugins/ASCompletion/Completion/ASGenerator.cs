@@ -4510,18 +4510,7 @@ namespace ASCompletion.Completion
         /// <returns>Inserted characters count</returns>
         public static int InsertImport(MemberModel member, bool fixScrolling)
         {
-            return InsertImport(ASContext.CurSciControl, member, fixScrolling);
-        }
-
-        /// <summary>
-        /// Add an 'import' statement in a document
-        /// </summary>
-        /// <param name="sci">The ScintillaControl instance hosting the document to modify</param>
-        /// <param name="member">Generates 'import {member.Type};'</param>
-        /// <param name="fixScrolling">Keep the editor view as if we didn't add any code in the file</param>
-        /// <returns>Inserted characters count</returns>
-        public static int InsertImport(ScintillaControl sci, MemberModel member, bool fixScrolling)
-        {
+            ScintillaControl sci = ASContext.CurSciControl;
             FileModel cFile = ASContext.Context.CurrentModel;
             int position = sci.CurrentPos;
             int curLine = sci.LineFromPosition(position);
@@ -4552,32 +4541,37 @@ namespace ASCompletion.Completion
             }
             int firstLine = line;
             bool found = false;
-            bool inComment = false;
+            byte inComment = 0;
             int packageLine = -1;
             string fullLine;
             int indent = sci.GetLineIndentation(line);
             int skipIfDef = 0;
             Match mImport;
             var importComparer = new CaseSensitiveImportComparer();
+            const int cppPreStyle = (int) ScintillaNet.Lexers.CPP.PREPROCESSOR;
+            var imports = cFile.Imports.Items.Where(x => x.LineFrom >= line && x.LineTo <= curLine && !sci.LineIsInPreprocessor(sci, cppPreStyle, x.LineFrom)).OrderBy()
             while (line < curLine)
             {
                 fullLine = sci.GetLine(line++);
                 string txt = fullLine.TrimStart();
                 // take comments into account
-                if (txt.IndexOf("/*") > -1)
+                do
                 {
-                    inComment = true;
-                }
-
-                if (inComment)
-                {
-                    if (txt.IndexOf("*/") > -1)
+                    if (inComment != 1 && txt.IndexOf("/*") > -1)
                     {
-                        inComment = false;
-                        txt = txt.Substring(txt.IndexOf("*/") + 2).TrimStart();
+                        inComment = 2;
                     }
-                    else continue;
-                }
+                    if (inComment == 2)
+                    {
+                        if (txt.IndexOf("*/") > -1)
+                        {
+                            inComment = 1;
+                            txt = txt.Substring(txt.IndexOf("*/") + 2).TrimStart();
+                        }
+                    }
+                } while (inComment == 1);
+
+                if (inComment == 2 || txt == string.Empty) continue;
 
                 if (txt.StartsWithOrdinal("package"))
                 {
