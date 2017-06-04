@@ -971,6 +971,11 @@ namespace ASCompletion.Completion
                                 .Returns(ReadAllTextHaxe("AfterGenerateFunction_issue103_21"))
                                 .SetName("Issue103. Case 21")
                                 .SetDescription("https://github.com/fdorg/flashdevelop/issues/103");
+                        yield return
+                            new TestCaseData(ReadAllTextHaxe("BeforeGenerateFunctionWithUnneededParenthesis"), GeneratorJobType.Function)
+                                .Returns(ReadAllTextHaxe("AfterGenerateFunctionWithUnneededParenthesis"))
+                                .SetName("Generate function with unneeded parenthesis")
+                                .SetDescription("https://github.com/fdorg/flashdevelop/issues/103");
                     }
                 }
 

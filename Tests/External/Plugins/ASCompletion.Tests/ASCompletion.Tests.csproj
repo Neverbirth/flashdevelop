@@ -596,6 +596,8 @@
     <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_empty.hx" />
     <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_emptyNoPackage.hx" />
     <EmbeddedResource Include="Test Files\generated\haxe\BeforeInsertImport_normal.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\AfterGenerateFunctionWithUnneededParenthesis.hx" />
+    <EmbeddedResource Include="Test Files\generated\haxe\BeforeGenerateFunctionWithUnneededParenthesis.hx" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\External\Plugins\AS2Context\AS2Context.csproj">
