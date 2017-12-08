@@ -7,11 +7,12 @@ namespace HaXeContext
 {
     public class CompilerCompletionHandler : IHaxeCompletionHandler
     {
-        private ThreadLocal<ProcessStartInfo> haxeProcessStartInfo;
+        private readonly ThreadLocal<ProcessStartInfo> haxeProcessStartInfo;
 
         public CompilerCompletionHandler(ProcessStartInfo haxeProcessStartInfo)
         {
-            this.haxeProcessStartInfo = new ThreadLocal<ProcessStartInfo>(haxeProcessStartInfo.Clone);
+            if (haxeProcessStartInfo != null)
+                this.haxeProcessStartInfo = new ThreadLocal<ProcessStartInfo>(haxeProcessStartInfo.Clone);
             Environment.SetEnvironmentVariable("HAXE_SERVER_PORT", "0");
         }
 
