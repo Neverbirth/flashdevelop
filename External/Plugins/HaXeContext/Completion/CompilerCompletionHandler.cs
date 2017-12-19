@@ -26,14 +26,15 @@ namespace HaXeContext
                 return string.Empty;
             try
             {
-                var haxeProcess = new Process();
-                haxeProcess.StartInfo = haxeProcessStartInfo.Value;
-                haxeProcess.StartInfo.Arguments = String.Join(" ", args);
-                haxeProcess.EnableRaisingEvents = true;
-                haxeProcess.Start();
-                var lines = haxeProcess.StandardError.ReadToEnd();
-                haxeProcess.Close();
-                return lines;
+                using (var haxeProcess = new Process())
+                {
+                    haxeProcess.StartInfo = haxeProcessStartInfo.Value;
+                    haxeProcess.StartInfo.Arguments = String.Join(" ", args);
+                    haxeProcess.EnableRaisingEvents = true;
+                    haxeProcess.Start();
+                    var lines = haxeProcess.StandardError.ReadToEnd();
+                    return lines;
+                }
             }
             catch 
             { 

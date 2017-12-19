@@ -88,7 +88,7 @@ namespace ScintillaNet
         /// </summary>
         public void HandleEvent(Object sender, NotifyEvent e, HandlingPriority priority)
         {
-            if (e.Type == EventType.ApplyTheme)
+            if (e.Type == EventType.ApplyTheme && !this.Disposing && !this.IsDisposed)
             {
                 Color color = PluginBase.MainForm.GetThemeColor("ScrollBar.ForeColor");
                 String value = PluginBase.MainForm.GetThemeValue("ScrollBar.UseCustom");
