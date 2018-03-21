@@ -1,18 +1,16 @@
 ﻿using System;
-using System.Text;
 using System.Drawing;
-using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using FlashDevelop.Controls;
-using System.ComponentModel;
 using System.Windows.Forms;
-using PluginCore.Managers;
 using PluginCore.Localization;
+using PluginCore.Controls;
+using PluginCore;
 
 namespace FlashDevelop.Dialogs
 {
-    public class ArgReplaceDialog : Form
+    public class ArgReplaceDialog : SmartForm, IThemeHandler
     {
         private System.Windows.Forms.Button okButton;
         private System.Windows.Forms.Panel bottomPanel;
@@ -31,6 +29,7 @@ namespace FlashDevelop.Dialogs
             this.InitializeInterface();
             this.Owner = Globals.MainForm;
             this.Font = Globals.Settings.DefaultFont;
+            this.FormGuid = "c52528e8-084c-4cb7-9129-cfb64b4184c6";
             if (this.argsPanel.Controls.Count == 0)
             {
                 this.Close();
@@ -46,8 +45,8 @@ namespace FlashDevelop.Dialogs
         private void InitializeComponent()
         {
             this.bottomPanel = new System.Windows.Forms.Panel();
-            this.cancelButton = new System.Windows.Forms.Button();
-            this.okButton = new System.Windows.Forms.Button();
+            this.cancelButton = new System.Windows.Forms.ButtonEx();
+            this.okButton = new System.Windows.Forms.ButtonEx();
             this.argsPanel = new System.Windows.Forms.FlowLayoutPanel();
             this.bottomPanel.SuspendLayout();
             this.SuspendLayout();
@@ -133,6 +132,15 @@ namespace FlashDevelop.Dialogs
         public Dictionary<String, String> Dictionary
         {
             get { return this.argDictionary; }
+        }
+
+        /// <summary>
+        /// Make sure back colors match
+        /// </summary>
+        public void AfterTheming()
+        {
+            Color color = PluginBase.MainForm.GetThemeColor("Form.BackColor", SystemColors.Control);
+            this.argsPanel.BackColor = this.bottomPanel.BackColor = color;
         }
 
         /// <summary>

@@ -105,7 +105,7 @@ namespace FlashDevelop
         private MenuStrip menuStrip;
         private StatusStrip statusStrip;
         private ToolStripPanel toolStripPanel;
-        private ToolStripProgressBar toolStripProgressBar;
+        private ToolStripProgressBarEx toolStripProgressBar;
         private ToolStripStatusLabel toolStripProgressLabel;
         private ToolStripStatusLabel toolStripStatusLabel;
         private ToolStripButton restartButton;
@@ -211,7 +211,7 @@ namespace FlashDevelop
         }
 
         /// <summary>
-        /// Gets the toolStripProgressBar
+        /// Gets the ToolStripProgressBarEx
         /// </summary>
         public ToolStripProgressBar ProgressBar
         {
@@ -991,7 +991,7 @@ namespace FlashDevelop
             this.tabMenu = StripBarManager.GetContextMenu(FileNameHelper.TabMenu);
             this.toolStripStatusLabel = new ToolStripStatusLabel();
             this.toolStripProgressLabel = new ToolStripStatusLabel();
-            this.toolStripProgressBar = new ToolStripProgressBar();
+            this.toolStripProgressBar = new ToolStripProgressBarEx();
             this.printPreviewDialog = new PrintPreviewDialog();
             this.saveFileDialog = new SaveFileDialog();
             this.openFileDialog = new OpenFileDialog();
@@ -1583,7 +1583,7 @@ namespace FlashDevelop
         /// </summary>
         public void OnScintillaControlMarginClick(ScintillaControl sci, Int32 modifiers, Int32 position, Int32 margin)
         {
-            if (margin == 2)
+            if (margin == ScintillaManager.FoldingMargin)
             {
                 Int32 line = sci.LineFromPosition(position);
                 if (Control.ModifierKeys == Keys.Control) MarkerManager.ToggleMarker(sci, 0, line);
@@ -1893,6 +1893,14 @@ namespace FlashDevelop
                 case "false": return false;
                 default: return fallback;
             }
+        }
+
+        /// <summary>
+        /// Sets if child controls should use theme.
+        /// </summary>
+        public void SetUseTheme(Object obj, Boolean use)
+        {
+            ThemeManager.SetUseTheme(obj, use);
         }
 
         /// <summary>
@@ -2233,7 +2241,6 @@ namespace FlashDevelop
                 return Path.GetDirectoryName(project.ProjectPath);
             }
             else return PathHelper.AppDir;
-
         }
 
         /// <summary>
@@ -2492,9 +2499,9 @@ namespace FlashDevelop
         }
 
         /// <summary>
-        /// Paste text using <see cref="ClipboardHistoryDialog"/>.
+        /// Views the current clipboard history
         /// </summary>
-        public void PasteHistory(object sender, EventArgs e)
+        public void ClipboardHistory(object sender, EventArgs e)
         {
             ClipboardTextData data;
             if (ClipboardHistoryDialog.Show(out data))
@@ -2592,9 +2599,6 @@ namespace FlashDevelop
         {
             try
             {
-                var button = (ToolStripItem)sender;
-                var reason = ((ItemData)button.Tag).Tag as string;
-                
                 if (this.CurrentDocument.IsUntitled)
                 {
                     this.saveFileDialog.FileName = this.CurrentDocument.FileName;
@@ -2611,6 +2615,8 @@ namespace FlashDevelop
                 }
                 else if (this.CurrentDocument.IsModified)
                 {
+                    var button = (ToolStripItem)sender;
+                    var reason = ((ItemData)button.Tag).Tag;
                     this.CurrentDocument.Save(this.CurrentDocument.FileName, reason);
                 }
             }
@@ -4261,6 +4267,15 @@ namespace FlashDevelop
                 String message = TextHelper.GetString("Info.CouldNotExecuteScript");
                 ErrorManager.ShowWarning(message + "\r\n" + ex.Message, null);
             }
+        }
+
+        /// <summary>
+        /// Test the controls in a dedicated form
+        /// </summary>
+        public void TestControls(Object sender, EventArgs e)
+        {
+            ControlDialog cd = new ControlDialog();
+            cd.Show(this);
         }
 
         /// <summary>

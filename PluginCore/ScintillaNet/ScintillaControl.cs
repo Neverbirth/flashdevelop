@@ -11,10 +11,8 @@ using System.Windows.Forms;
 using ScintillaNet.Configuration;
 using ScintillaNet.Lexers;
 using PluginCore.FRService;
-using PluginCore.Utilities;
 using PluginCore.Managers;
 using PluginCore.Controls;
-using PluginCore.Helpers;
 using PluginCore;
 
 namespace ScintillaNet
@@ -96,8 +94,7 @@ namespace ScintillaNet
                 Boolean enabled = value == "True" || (value == null && color != Color.Empty);
                 if (enabled)
                 {
-                    if (!this.Controls.Contains(this.vScrollBar))
-                    this.AddScrollBars(this);
+                    if (!this.Controls.Contains(this.vScrollBar)) this.AddScrollBars(this);
                     this.UpdateScrollBarTheme(this);
                 }
                 else if (!enabled && this.Controls.Contains(this.vScrollBar))
@@ -310,16 +307,18 @@ namespace ScintillaNet
         {
             Int32 vsbWidth = this.Controls.Contains(this.vScrollBar) && this.vScrollBar.Visible ? this.vScrollBar.Width : 0;
             Int32 hsbHeight = this.Controls.Contains(this.hScrollBar) && this.hScrollBar.Visible ? this.hScrollBar.Height : 0;
+
             //if (Win32.ShouldUseWin32())
             //    SetWindowPos(this.hwndScintilla, 0, ClientRectangle.X, ClientRectangle.Y, ClientRectangle.Width - vsbWidth, ClientRectangle.Height - hsbHeight, 0);
+
             if (this.Controls.Contains(this.vScrollBar))
             {
                 this.vScrollBar.SetBounds(ClientRectangle.Width - vsbWidth, 0, this.vScrollBar.Width, ClientRectangle.Height - hsbHeight);
                 this.hScrollBar.SetBounds(0, ClientRectangle.Height - hsbHeight, ClientRectangle.Width - vsbWidth, this.hScrollBar.Height);
                 this.scrollerCorner.Visible = this.vScrollBar.Visible && this.hScrollBar.Visible;
                 if (this.scrollerCorner.Visible)
-                    this.scrollerCorner.Location = new System.Drawing.Point(this.vScrollBar.Location.X, this.hScrollBar.Location.Y);
-        }
+                    this.scrollerCorner.Location = new Point(this.vScrollBar.Location.X, this.hScrollBar.Location.Y);
+            }
         }
 
         protected override CreateParams CreateParams
@@ -5984,18 +5983,18 @@ namespace ScintillaNet
                 switch (PluginBase.MainForm.Settings.HighlightMatchingWordsMode) // Handle selection highlighting
                 {
                     case Enums.HighlightMatchingWordsMode.SelectionOrPosition:
+                    {
+                        StartHighlightSelectionTimer(sci);
+                        break;
+                    }
+                    case Enums.HighlightMatchingWordsMode.SelectedWord:
+                    {
+                        if (sci.SelText == sci.GetWordFromPosition(sci.CurrentPos))
                         {
                             StartHighlightSelectionTimer(sci);
-                            break;
                         }
-                    case Enums.HighlightMatchingWordsMode.SelectedWord:
-                        {
-                            if (sci.SelText == sci.GetWordFromPosition(sci.CurrentPos))
-                            {
-                                StartHighlightSelectionTimer(sci);
-                            }
-                            break;
-                        }
+                        break;
+                    }
                 }
             }
             lastSelectionStart = sci.SelectionStart;
@@ -6171,8 +6170,7 @@ namespace ScintillaNet
                             do
                             {
                                 --tempLine;
-                                tempText3 = GetLine(tempLine);
-                                tempText3 = tempText3.Substring(0, tempText3.Length - 1); //remove newline
+                                tempText3 = GetLine(tempLine).TrimEnd('\n', '\r');
                                 tempText2 = tempText3.TrimEnd();
                                 tempText = tempText2;
                                 if (tempText.Length == 0) previousIndent = -1;

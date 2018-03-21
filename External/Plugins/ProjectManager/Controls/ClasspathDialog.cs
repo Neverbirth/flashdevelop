@@ -1,12 +1,7 @@
 using System;
-using System.ComponentModel;
 using System.Collections.Generic;
-using System.Data;
-using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
 using PluginCore.Localization;
-using PluginCore.Managers;
 using PluginCore.Controls;
 using PluginCore;
 
@@ -49,10 +44,10 @@ namespace ProjectManager.Controls
         private void InitializeComponent()
         {
             this.classpathControl = new ProjectManager.Controls.ClasspathControl();
-            this.btnCancel = new System.Windows.Forms.Button();
-            this.btnOK = new System.Windows.Forms.Button();
+            this.btnCancel = new System.Windows.Forms.ButtonEx();
+            this.btnOK = new System.Windows.Forms.ButtonEx();
             this.label2 = new System.Windows.Forms.Label();
-            this.groupBox1 = new System.Windows.Forms.GroupBox();
+            this.groupBox1 = new System.Windows.Forms.GroupBoxEx();
             this.groupBox1.SuspendLayout();
             this.SuspendLayout();
             // 

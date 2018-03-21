@@ -1,18 +1,14 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
-using ASCompletion.Context;
+using ASCompletion.Completion;
 using ASCompletion.Model;
-using ASCompletion.TestUtils;
 using CodeRefactor.TestUtils;
-using NSubstitute;
 using NUnit.Framework;
 using PluginCore;
-using PluginCore.Helpers;
 
 namespace CodeRefactor.Provider
 {
     [TestFixture]
-    class RefactoringHelperTests : CodeRefactorTests
+    class RefactoringHelperTests : ASCompleteTests
     {
         internal static string GetFullPathHaxe(string fileName) => $"{nameof(CodeRefactor)}.Test_Files.coderefactor.findallreferences.haxe.{fileName}.hx";
 
@@ -61,19 +57,35 @@ namespace CodeRefactor.Provider
             }
 
             [Test, TestCaseSource(nameof(HaxeTestCases))]
-            public Result Haxe(string sourceText)
+            public Result Common(string sourceText)
             {
-                ASContext.Context.SetHaxeFeatures();
-                Sci.ConfigurationLanguage = "haxe";
-                Sci.Text = sourceText;
-                SnippetHelper.PostProcessSnippets(Sci, 0);
-                var currentModel = ASContext.Context.CurrentModel;
-                new ASFileParser().ParseSrc(currentModel, Sci.Text);
-                var currentClass = currentModel.Classes.FirstOrDefault() ?? ClassModel.VoidClass;
-                ASContext.Context.CurrentClass.Returns(currentClass);
-                ASContext.Context.CurrentMember.Returns(currentClass.Members.Items.FirstOrDefault());
+                SetHaxeFeatures(sci);
+                SetSrc(sci, sourceText);
                 var target = RefactoringHelper.GetDefaultRefactorTarget();
                 return new Result(target.IsPackage, target.Member, target.Type);
+            }
+        }
+
+        [TestFixture]
+        class GetDefaultRefactorTargetNameTests : RefactoringHelperTests
+        {
+            static IEnumerable<TestCaseData> HaxeTestCases
+            {
+                get
+                {
+                    yield return
+                        new TestCaseData(ReadAllTextHaxe("LocalVar_enum"))
+                            .Returns("v");
+                }
+            }
+
+            [Test, TestCaseSource(nameof(HaxeTestCases))]
+            public string Common(string sourceText)
+            {
+                SetHaxeFeatures(sci);
+                SetSrc(sci, sourceText);
+                var target = RefactoringHelper.GetDefaultRefactorTarget();
+                return RefactoringHelper.GetRefactorTargetName(target);
             }
         }
 
@@ -124,23 +136,16 @@ namespace CodeRefactor.Provider
             }
 
             [Test, TestCaseSource(nameof(HaxeTestCases))]
-            public bool Haxe(string sourceText, string sdkVersion = "0.0.0")
+            public bool Haxe(string sourceText, string sdkVersion)
             {
                 PluginBase.CurrentSDK = new InstalledSDK {Version = sdkVersion};
-                ASContext.Context.SetHaxeFeatures();
-                Sci.ConfigurationLanguage = "haxe";
+                SetHaxeFeatures(sci);
                 return Common(sourceText);
             }
 
             bool Common(string sourceText)
             {
-                Sci.Text = sourceText;
-                SnippetHelper.PostProcessSnippets(Sci, 0);
-                var currentModel = ASContext.Context.CurrentModel;
-                new ASFileParser().ParseSrc(currentModel, Sci.Text);
-                var currentClass = currentModel.Classes.FirstOrDefault() ?? ClassModel.VoidClass;
-                ASContext.Context.CurrentClass.Returns(currentClass);
-                ASContext.Context.CurrentMember.Returns(currentClass.Members.Items.FirstOrDefault());
+                SetSrc(sci, sourceText);
                 var target = RefactoringHelper.GetDefaultRefactorTarget();
                 return RefactoringHelper.IsPrivateTarget(target);
             }

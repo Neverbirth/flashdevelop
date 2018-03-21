@@ -110,11 +110,11 @@ namespace CodeRefactor
         /// </summary>
         public void Initialize()
         {
-            this.InitBasics();
-            this.LoadSettings();
-            this.CreateMenuItems();
-            this.RegisterMenuItems();
-            this.RegisterTraceGroups();
+            InitBasics();
+            LoadSettings();
+            CreateMenuItems();
+            RegisterMenuItems();
+            RegisterTraceGroups();
         }
 
         /// <summary>
@@ -215,8 +215,8 @@ namespace CodeRefactor
         static bool IsValidForMove(string oldPath)
         {
             return PluginBase.CurrentProject != null
-                   && (File.Exists(oldPath) || Directory.Exists(oldPath))
-                   && IsValidFile(oldPath);
+                && (File.Exists(oldPath) || Directory.Exists(oldPath))
+                && IsValidFile(oldPath);
         }
 
         /// <summary>
@@ -337,15 +337,14 @@ namespace CodeRefactor
         /// <summary>
         /// Cursor position changed and word at this position was resolved
         /// </summary>
-        private void OnResolvedContextChanged(ResolvedContext resolved)
-        {
-            this.UpdateMenuItems();
-        }
+        private void OnResolvedContextChanged(ResolvedContext resolved) => UpdateMenuItems(resolved);
 
         /// <summary>
         /// Updates the state of the menu items
         /// </summary>
-        private void UpdateMenuItems()
+        private void UpdateMenuItems() => UpdateMenuItems(ASComplete.CurrentResolvedContext);
+
+        private void UpdateMenuItems(ResolvedContext resolved)
         {
             try
             {
@@ -354,21 +353,19 @@ namespace CodeRefactor
                 this.refactorMainMenu.DelegateMenuItem.Enabled = false;
                 this.refactorContextMenu.DelegateMenuItem.Enabled = false;
                 bool langIsValid = RefactoringHelper.GetLanguageIsValid();
-                ResolvedContext resolved = ASComplete.CurrentResolvedContext;
                 bool isValid = langIsValid && resolved != null && resolved.Position >= 0;
                 ASResult result = isValid ? resolved.Result : null;
                 if (result != null && !result.IsNull())
                 {
-                    bool isRenameable = (result.Member != null && RefactoringHelper.ModelFileExists(result.Member.InFile) && !RefactoringHelper.IsUnderSDKPath(result.Member.InFile))
-                        || (result.Type != null && RefactoringHelper.ModelFileExists(result.Type.InFile) && !RefactoringHelper.IsUnderSDKPath(result.Type.InFile))
-                        || (RefactoringHelper.ModelFileExists(result.InFile) && !RefactoringHelper.IsUnderSDKPath(result.InFile))
-                        || result.IsPackage;
+                    var validator = CommandFactoryProvider.GetFactory(result)?.GetValidator(typeof(Rename))
+                                 ?? CommandFactoryProvider.DefaultFactory.GetValidator(typeof(Rename));
+                    var isRenameable = validator(result);
                     this.refactorContextMenu.RenameMenuItem.Enabled = isRenameable;
                     this.refactorMainMenu.RenameMenuItem.Enabled = isRenameable;
                     var enabled = !result.IsPackage && (File.Exists(curFileName) || curFileName.Contains("[model]"));
                     this.editorReferencesItem.Enabled = enabled;
                     this.viewReferencesItem.Enabled = enabled;
-                    if (result.Member != null && result.Type != null && result.InClass != null && result.InFile != null)
+                    if (result.InFile != null && result.InClass != null && (result.InClass.Flags & FlagType.Interface) == 0 && result.Member != null && result.Type != null)
                     {
                         FlagType flags = result.Member.Flags;
                         if ((flags & FlagType.Variable) > 0 && (flags & FlagType.LocalVar) == 0 && (flags & FlagType.ParameterVar) == 0)
@@ -433,7 +430,7 @@ namespace CodeRefactor
                 this.refactorMainMenu.CodeGeneratorMenuItem.Enabled = isValid;
                 this.refactorContextMenu.CodeGeneratorMenuItem.Enabled = isValid;
             }
-            catch {}
+            catch { }
         }
 
         /// <summary>
@@ -693,6 +690,7 @@ namespace CodeRefactor
             RefactorItem.AddItemToList(refactorMainMenu.ExtractMethodMenuItem, list);
             RefactorItem.AddItemToList(refactorMainMenu.ExtractLocalVariableMenuItem, list);
             RefactorItem.AddItemToList(refactorMainMenu.DelegateMenuItem, list);
+            RefactorItem.AddItemToList(refactorMainMenu.SurroundMenu, list);
 
             var features = ASContext.Context.Features;
             if (!features.hasImports) return;

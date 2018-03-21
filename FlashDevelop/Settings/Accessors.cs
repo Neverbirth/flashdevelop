@@ -1010,7 +1010,7 @@ namespace FlashDevelop.Settings
         {
             get
             {
-                String value = Globals.MainForm.GetThemeValue("ComboBox.FlatStyle", "Popup");
+                String value = Globals.MainForm.GetThemeValue("ComboBox.FlatStyle", "Standard");
                 switch (value)
                 {
                     case "Flat": return FlatStyle.Flat;

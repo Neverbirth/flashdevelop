@@ -112,10 +112,10 @@
     <value>2.0</value>
   </resheader>
   <resheader name="reader">
-    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <resheader name="writer">
-    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="ASCompletion.Title.ConvertToConst" xml:space="preserve">
     <value>In Konstante konvertieren</value>
@@ -358,6 +358,7 @@ Ansonsten kann Adobe Flash Professional auch zum Überprüfen der Syntax verwend
   </data>
   <data name="ASCompletion.Label.TypesExplorer" xml:space="preserve">
     <value>Typ B&amp;rowser...</value>
+    <comment>Modified after 5.3.0</comment>
   </data>
   <data name="ASCompletion.Label.ViewMenuItem" xml:space="preserve">
     <value>&amp;Gliederung</value>
@@ -3144,22 +3145,6 @@ Bitte bedenken Sie, dass Sie viele Projektoptionen nicht mehr nutzen können, so
   </data>
   <data name="ASClassWizard.Wizard.Warning.ConflictingMember" xml:space="preserve">
     <value>New member would conflict with interface {0}</value>
-    <comment>Added after 4.7.1</comment>
-  </data>
-  <data name="ASClassWizard.Wizard.Warning.ExistingInheritedMember" xml:space="preserve">
-    <value>{0} already in list</value>
-    <comment>Added after 4.7.1</comment>
-  </data>
-  <data name="ASClassWizard.Wizard.Warning.ExistingMember" xml:space="preserve">
-    <value>{0} already in list, do you wish to replace it?</value>
-    <comment>Added after 4.7.1</comment>
-  </data>
-  <data name="ASClassWizard.Wizard.Error.InvalidInterfaceName" xml:space="preserve">
-    <value>Interface name contains invalid characters.</value>
-    <comment>Added after 4.7.1</comment>
-  </data>
-  <data name="ASClassWizard.Wizard.Error.ConflictingMembers" xml:space="preserve">
-    <value>Conflicting members detected: {0}</value>
     <comment>Added after 4.7.1</comment>
   </data>
   <data name="CodeRefactor.Info.Description" xml:space="preserve">
@@ -6230,8 +6215,8 @@ AND - All conditions are met.</value>
     <value>&amp;Clear</value>
     <comment>Added after 5.2.0</comment>
   </data>
-  <data name="FlashDevelop.Label.PasteHistory" xml:space="preserve">
-    <value>Paste History</value>
+  <data name="FlashDevelop.Label.ClipboardHistory" xml:space="preserve">
+    <value>Clipboard History</value>
     <comment>Added after 5.2.0</comment>
   </data>
   <data name="FlashDevelop.Description.ClipboardHistorySize" xml:space="preserve">
@@ -6249,6 +6234,34 @@ AND - All conditions are met.</value>
   <data name="ResultsPanel.Description.KeepResultsByDefault" xml:space="preserve">
     <value>Keep result panels locked by default.</value>
     <comment>Added after 5.2.0</comment>
+  </data>
+  <data name="SourceControl.Description.NeverAskForCommit" xml:space="preserve">
+    <value>Sets whether you will be asked to make a commit after moving / deleting files, etc.</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Label.Yes" xml:space="preserve">
+    <value>Ja</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Label.No" xml:space="preserve">
+    <value>Nein</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Label.Never" xml:space="preserve">
+    <value>Niemals</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Info.CreateCommit" xml:space="preserve">
+    <value>Möchten Sie für diese Aktion einen neuen Commit erstellen?</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Info.AddFile" xml:space="preserve">
+    <value>Möchten Sie diese Datei Ihrer Sourcecontrolverwaltung hinzufügen?</value>
+    <comment>Added after 5.2.1</comment>
+  </data>
+  <data name="SourceControl.Info.RemoveFiles" xml:space="preserve">
+    <value>Möchten Sie diese Datei(en) aus Ihrer Sourcecontrolverwaltung entfernen?</value>
+    <comment>Added after 5.2.1</comment>
   </data>
   <data name="FlashDevelop.Description.EndAtLastLine" xml:space="preserve">
     <value>Sets the scroll range so that maximum scroll position has the last line at the bottom of the view. Setting this to false allows scrolling one page below the last line.</value>
@@ -6278,8 +6291,28 @@ AND - All conditions are met.</value>
     <value>Vererbungsnavigation</value>
     <comment>Added after 5.2.1</comment>
   </data>
-  <data name="FlashDevelop.Description.DrawingTechnology" xml:space="preserve">
-    <value>Technology used for drawing text inside the editor. DirectWrite supports advanced features like ligatures.</value>
-    <comment>Added after 5.2.1</comment>
+  <data name="PluginCore.Label.Cancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>Added after 5.3.0</comment>
+  </data>
+  <data name="PluginCore.Label.No" xml:space="preserve">
+    <value>No</value>
+    <comment>Added after 5.3.0</comment>
+  </data>
+  <data name="PluginCore.Label.NoToAll" xml:space="preserve">
+    <value>No to All</value>
+    <comment>Added after 5.3.0</comment>
+  </data>
+  <data name="PluginCore.Label.Yes" xml:space="preserve">
+    <value>Yes</value>
+    <comment>Added after 5.3.0</comment>
+  </data>
+  <data name="PluginCore.Label.YesToAll" xml:space="preserve">
+    <value>Yes To All</value>
+    <comment>Added after 5.3.0</comment>
+  </data>
+  <data name="PluginCore.Label.DontAskAgain" xml:space="preserve">
+    <value>Remember, don't ask again</value>
+    <comment>Added after 5.3.0</comment>
   </data>
 </root>

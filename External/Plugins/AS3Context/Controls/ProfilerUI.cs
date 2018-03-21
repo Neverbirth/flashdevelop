@@ -1,5 +1,4 @@
 ﻿using System;
-using System.ComponentModel;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
@@ -15,7 +14,7 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace AS3Context.Controls
 {
-    public partial class ProfilerUI : DockPanelControl
+    public partial class ProfilerUI : DockPanelControl, IThemeHandler
     {
         static private readonly Byte[] RESULT_OK = Encoding.Default.GetBytes("<flashconnect status=\"0\"/>\0");
         static private readonly Byte[] RESULT_IGNORED = Encoding.Default.GetBytes("<flashconnect status=\"3\"/>\0");
@@ -106,6 +105,16 @@ namespace AS3Context.Controls
             configureProfilerChooser();
 
             StopProfiling();
+        }
+
+        /// <summary>
+        /// Lets do some theming fixes
+        /// </summary>
+        public void AfterTheming()
+        {
+            this.memStatsPanel.BackColor = Color.Empty;
+            this.container.BackColor = PluginBase.MainForm.GetThemeColor("Form.BackColor", SystemColors.Control);
+            this.memView.Graph.UpdateColors();
         }
 
         void liveObjectsView_OnViewObject(TypeItem item)

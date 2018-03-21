@@ -1,12 +1,7 @@
 using System;
-using System.Text;
 using System.Media;
 using System.Drawing;
-using System.Windows.Forms;
-using System.ComponentModel;
-using System.Collections.Generic;
 using PluginCore.Localization;
-using FlashDevelop.Helpers;
 using PluginCore.Controls;
 
 namespace FlashDevelop.Dialogs
@@ -39,10 +34,10 @@ namespace FlashDevelop.Dialogs
         /// </summary>
         private void InitializeComponent()
         {
-            this.exitButton = new System.Windows.Forms.Button();
+            this.exitButton = new System.Windows.Forms.ButtonEx();
             this.headerLabel = new System.Windows.Forms.Label();
-            this.continueButton = new System.Windows.Forms.Button();
-            this.infoTextBox = new System.Windows.Forms.TextBox();
+            this.continueButton = new System.Windows.Forms.ButtonEx();
+            this.infoTextBox = new System.Windows.Forms.TextBoxEx();
             this.countLabel = new System.Windows.Forms.Label();
             this.pictureBox = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox)).BeginInit();

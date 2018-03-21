@@ -74,6 +74,7 @@
     <RunPostBuildEvent>Always</RunPostBuildEvent>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="Scripting, Version=2.7.0.0, Culture=neutral, PublicKeyToken=70fcc3d18c749033, processorArchitecture=x86">
       <SpecificVersion>False</SpecificVersion>
       <Private>False</Private>
@@ -102,6 +103,9 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Dialogs\ClipboardHistoryDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Dialogs\ControlDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Dialogs\HashDialog.cs">
@@ -199,6 +203,9 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Dialogs\ControlDialog.resx">
+      <DependentUpon>ControlDialog.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Resources\AboutDialog.jpg" />
   </ItemGroup>
   <ItemGroup>

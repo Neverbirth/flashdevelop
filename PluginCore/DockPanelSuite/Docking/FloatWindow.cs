@@ -1,8 +1,6 @@
 using System;
-using System.Collections;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Runtime.InteropServices;
 using System.Security.Permissions;
 using System.Diagnostics.CodeAnalysis;
 using PluginCore.DockPanelSuite;
@@ -235,20 +233,21 @@ namespace WeifenLuo.WinFormsUI.Docking
                     base.WndProc(ref m);
                     return;
                 }
-
-                DockPanel.SuspendLayout(true);
-
-                // Restore to panel
-                foreach (DockPane pane in NestedPanes)
+                if (DockPanel.AllowEndUserFloatChange)
                 {
-                    if (!pane.IsFloat)
-                        continue;
-                    pane.RestoreToPanel();
+                    DockPanel.SuspendLayout(true);
+
+                    // Restore to panel
+                    foreach (DockPane pane in NestedPanes)
+                    {
+                        if (!pane.IsFloat)
+                            continue;
+                        pane.RestoreToPanel();
+                    }
+
+                    DockPanel.ResumeLayout(true, true);
+                    return;
                 }
-
-
-                DockPanel.ResumeLayout(true, true);
-                return;
             }
             else if (m.Msg == WM_CHECKDISPOSE)
             {

@@ -1,7 +1,3 @@
-/*
- * Code completion
- */
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -62,8 +58,11 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Character written in editor
         /// </summary>
+        /// <param name="Sci">Scintilla Control</param>
         /// <param name="Value">Character inserted</param>
-        static public bool OnChar(ScintillaControl Sci, int Value, bool autoHide)
+        /// <param name="autoHide">Auto-started completion (is false when pressing Ctrl+Space)</param>
+        /// <returns>Auto-completion has been handled</returns>
+        public static bool OnChar(ScintillaControl Sci, int Value, bool autoHide)
         {
             IASContext ctx = ASContext.Context;
             ContextFeatures features = ctx.Features;
@@ -97,20 +96,19 @@ namespace ASCompletion.Completion
                 // string interpolation
                     if (features.stringInterpolationQuotes.IndexOf(stringTypeChar) >= 0 &&
                         IsMatchingQuote(stringTypeChar, Sci.BaseStyleAt(position - 2)))
-                {
-                        if (Value == '$' && !IsEscapedCharacter(Sci, position - 1, '$'))
-                        {
-                        return HandleInterpolationCompletion(Sci, autoHide, false);
-                        }
-                        else if (Value == '{' && prevValue == '$' && !IsEscapedCharacter(Sci, position - 2, '$'))
                     {
-                            if (autoHide) HandleAddClosingBraces(Sci, (char) Value, true);
-                        return HandleInterpolationCompletion(Sci, autoHide, true);
-                    }
-                        else if (IsInterpolationExpr(Sci, position - 2))
+                        if (Value == '$' && !ctx.CodeComplete.IsEscapedCharacter(Sci, position - 1, '$'))
                         {
-                        skipQuoteCheck = true; // continue on with regular completion
-                }
+                            return HandleInterpolationCompletion(Sci, autoHide, false);
+                        }
+                        else if (Value == '{' && prevValue == '$' && !ctx.CodeComplete.IsEscapedCharacter(Sci, position - 2, '$'))
+                        {
+                            return HandleInterpolationCompletion(Sci, autoHide, false);
+                        }
+                        else if (ctx.CodeComplete.IsStringInterpolationStyle(Sci, position - 2))
+                        {
+                            skipQuoteCheck = true; // continue on with regular completion
+                        }
                     }
                 }
 
@@ -153,31 +151,7 @@ namespace ASCompletion.Completion
                         break;
 
                     case ' ':
-                        position--;
-                        string word = GetWordLeft(Sci, ref position);
-                        if (word.Length == 0)
-                        {
-                            char c = (char)Sci.CharAt(position);
-                            if (c == ':' && features.hasEcmaTyping)
-                                return HandleColonCompletion(Sci, "", autoHide);
-                            else if (autoHide && (c == '(' || c == ',') && !ASContext.CommonSettings.DisableCallTip)
-                                return HandleFunctionCompletion(Sci, autoHide);
-                            break;
-                        }
-                        if (word == "package" || Array.IndexOf(features.typesKeywords, word) >= 0) 
-                            return false;
-                        // override
-                        if (word == features.overrideKey)
-                            return ASGenerator.HandleGeneratorCompletion(Sci, autoHide, word);
-                        // new/extends/instanceof/...
-                        if (features.HasTypePreKey(word))
-                            return HandleNewCompletion(Sci, "", autoHide, word);
-                        // import
-                        if (features.hasImports && (word == features.importKey || word == features.importKeyAlt))
-                            return HandleImportCompletion(Sci, "", autoHide);
-                        // public/internal/private/protected/static
-                        if (Array.IndexOf(features.accessKeywords, word) >= 0)
-                            return HandleDeclarationCompletion(Sci, "", autoHide);
+                        if (ASContext.Context.CodeComplete.HandleWhiteSpaceCompletion(Sci, position, autoHide)) return true;
                         break;
 
                     case ':':
@@ -226,7 +200,8 @@ namespace ASCompletion.Completion
                         break;
                 }
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 ErrorManager.ShowError(/*"Completion error",*/ ex);
             }
 
@@ -416,10 +391,10 @@ namespace ASCompletion.Completion
         public static void HandleAddClosingBraces(ScintillaControl sci, char c, bool addedChar)
         {
             if (!ASContext.CommonSettings.AddClosingBraces) return;
-
+            var context = ASContext.Context;
             if (addedChar)
             {
-                if (IsMatchingQuote(c, sci.BaseStyleAt(sci.CurrentPos - 2)) && IsEscapedCharacter(sci, sci.CurrentPos - 1))
+                if (IsMatchingQuote(c, sci.BaseStyleAt(sci.CurrentPos - 2)) && context.CodeComplete.IsEscapedCharacter(sci, sci.CurrentPos - 1))
                 {
                     return;
                 }
@@ -447,8 +422,9 @@ namespace ASCompletion.Completion
                 }
 
                 // not inside a string literal
+                int position = sci.CurrentPos - 1;
                 if (!(IsStringStyle(styleBefore) && IsStringStyle(styleAfter)) && !(IsCharStyle(styleBefore) && IsCharStyle(styleAfter))
-                    || IsInterpolationExpr(sci, sci.CurrentPos - 1))
+                    || context.CodeComplete.IsStringInterpolationStyle(sci, position))
                 {
                     char nextChar = sci.CurrentChar;
                     int nextPos = sci.CurrentPos;
@@ -498,7 +474,7 @@ namespace ASCompletion.Completion
             {
                 char open = (char) sci.CharAt(sci.CurrentPos - 1);
 
-                if (IsMatchingQuote(open, sci.BaseStyleAt(sci.CurrentPos - 2)) && IsEscapedCharacter(sci, sci.CurrentPos - 1))
+                if (IsMatchingQuote(open, sci.BaseStyleAt(sci.CurrentPos - 2)) && context.CodeComplete.IsEscapedCharacter(sci, sci.CurrentPos - 1))
                 {
                     return;
                 }
@@ -507,8 +483,9 @@ namespace ASCompletion.Completion
                 int styleAfter = sci.BaseStyleAt(sci.CurrentPos);
 
                 // not inside a string literal
+                int position = sci.CurrentPos - 1;
                 if (!(IsStringStyle(styleBefore) && IsStringStyle(styleAfter)) && !(IsCharStyle(styleBefore) && IsCharStyle(styleAfter))
-                    || IsInterpolationExpr(sci, sci.CurrentPos - 1)
+                    || context.CodeComplete.IsStringInterpolationStyle(sci, position)
                     || IsMatchingQuote(open, styleAfter))
                 {
                     int closePos = sci.CurrentPos;
@@ -588,19 +565,19 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Using the text under at cursor position, search and open the object/class/member declaration
         /// </summary>
-        /// <param name="Sci">Control</param>
+        /// <param name="sci">Control</param>
         /// <returns>Declaration was found</returns>
-        static public bool DeclarationLookup(ScintillaControl Sci)
+        public static bool DeclarationLookup(ScintillaControl sci)
         {
-            if (!ASContext.Context.IsFileValid || (Sci == null)) return false;
+            if (!ASContext.Context.IsFileValid || (sci == null)) return false;
 
             // let the context handle goto declaration if we couldn't find anything
-            if (!InternalDeclarationLookup(Sci))
+            if (!InternalDeclarationLookup(sci))
             {
-                ASExpr expression = GetExpression(Sci, Sci.CurrentPos);
+                ASExpr expression = GetExpression(sci, sci.CurrentPos);
                 if (expression != null)
                 {
-                    return ASContext.Context.HandleGotoDeclaration(Sci, expression);
+                    return ASContext.Context.HandleGotoDeclaration(sci, expression);
                 }
             }
             return true;
@@ -609,13 +586,13 @@ namespace ASCompletion.Completion
         public static bool TypeDeclarationLookup(ScintillaControl sci)
         {
             if (sci == null || !ASContext.Context.IsFileValid) return false;
-            var position = sci.WordEndPosition(sci.CurrentPos, true);
-            var result = GetExpressionType(sci, position, false);
+            var position = ExpressionEndPosition(sci, sci.CurrentPos);
+            var result = GetExpressionType(sci, position, false, true);
             if (result.IsPackage) return false;
             var member = result.Member;
             var type = result.Type;
-            if (member == null || (member.Flags & FlagType.AutomaticVar) > 0 || type == null) return false;
-            if ((member.Flags & FlagType.Function) > 0)
+            if (member == null || member.Flags.HasFlag(FlagType.AutomaticVar) || type == null) return false;
+            if (member.Flags.HasFlag(FlagType.Function))
             {
                 type = ASContext.Context.ResolveType(result.Member.Type, result.InFile);
                 if (type.IsVoid()) return false;
@@ -628,11 +605,11 @@ namespace ASCompletion.Completion
             return OpenDocumentToDeclaration(sci, result);
         }
 
-        static private bool InternalDeclarationLookup(ScintillaControl Sci)
+        private static bool InternalDeclarationLookup(ScintillaControl sci)
         {
             // get type at cursor position
-            var position = Sci.WordEndPosition(Sci.CurrentPos, true);
-            var result = GetExpressionType(Sci, position, false);
+            var position = ExpressionEndPosition(sci, sci.CurrentPos);
+            var result = GetExpressionType(sci, position, false, true);
 
             // browse to package folder
             if (result.IsPackage && result.InFile != null)
@@ -647,12 +624,12 @@ namespace ASCompletion.Completion
                     return false;
 
                 // open the file
-                return OpenDocumentToDeclaration(Sci, result);
+                return OpenDocumentToDeclaration(sci, result);
             }
             // show overridden method
             else if (ASContext.Context.CurrentMember != null 
                 && ASContext.Context.Features.overrideKey != null
-                && Sci.GetWordFromPosition(position) == ASContext.Context.Features.overrideKey)
+                && sci.GetWordFromPosition(position) == ASContext.Context.Features.overrideKey)
             {
                 MemberModel member = ASContext.Context.CurrentMember;
                 if ((member.Flags & FlagType.Override) > 0)
@@ -671,7 +648,7 @@ namespace ASCompletion.Completion
                                 result.Member = found;
                                 result.InFile = tmpClass.InFile;
                                 result.InClass = tmpClass;
-                                OpenDocumentToDeclaration(Sci, result);
+                                OpenDocumentToDeclaration(sci, result);
                                 break;
                             }
                             tmpClass = tmpClass.Extends;
@@ -695,15 +672,15 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Show resolved element declaration
         /// </summary>
-        static public bool OpenDocumentToDeclaration(ScintillaControl Sci, ASResult result)
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="result">Element declaration</param>
+        public static bool OpenDocumentToDeclaration(ScintillaControl sci, ASResult result)
         {
-            FileModel model = result.InFile
-                ?? ((result.Member != null && result.Member.InFile != null) ? result.Member.InFile : null)
-                ?? ((result.Type != null) ? result.Type.InFile : null);
+            var model = result.InFile ?? result.Member?.InFile ?? result.Type?.InFile;
             if (model == null || model.FileName == "") return false;
-            ClassModel inClass = result.InClass ?? result.Type;
+            var inClass = result.InClass ?? result.Type;
 
-            SaveLastLookupPosition(Sci);
+            SaveLastLookupPosition(sci);
 
             if (model != ASContext.Context.CurrentModel)
             {
@@ -724,12 +701,8 @@ namespace ASCompletion.Completion
                         result.Member = result.InFile.Members.Search(result.Member.Name, 0, 0);
                 }
             }
-            if ((inClass == null || inClass.IsVoid()) && result.Member == null)
-                return false;
-
-            Sci = ASContext.CurSciControl;
-            if (Sci == null)
-                return false;
+            if ((inClass == null || inClass.IsVoid()) && result.Member == null) return false;
+            if (ASContext.CurSciControl == null) return false;
 
             int line = 0;
             string name = null;
@@ -741,7 +714,7 @@ namespace ASCompletion.Completion
                 name = result.Member.Name;
             }
             // class declaration
-            else if (inClass.LineFrom > 0)
+            else if (inClass != null && inClass.LineFrom > 0)
             {
                 line = inClass.LineFrom;
                 name = inClass.Name;
@@ -1077,7 +1050,7 @@ namespace ASCompletion.Completion
             {
                 if (m.LineFrom > lineNum)
                     continue;
-                if (closestList != null && (lineNum - m.LineFrom) >= (lineNum - closestList.LineFrom))
+                if (closestList != null && m.LineFrom <= closestList.LineFrom)
                     continue;
 
                 ClassModel aType2 = ASContext.Context.ResolveType(m.Type, context.CurrentModel);
@@ -1210,16 +1183,16 @@ namespace ASCompletion.Completion
             }
         }
 
-        private static void ReformatLine(ScintillaControl Sci, int position)
+        private static void ReformatLine(ScintillaControl sci, int position)
         {
-            int line = Sci.LineFromPosition(position);
-            string txt = Sci.GetLine(line).TrimEnd(new char[] { '\r', '\n' });
-            int curPos = Sci.CurrentPos;
-            int startPos = Sci.PositionFromLine(line);
-            int offset = Sci.MBSafeLengthFromBytes(txt, position - startPos);
+            int line = sci.LineFromPosition(position);
+            string txt = sci.GetLine(line).TrimEnd('\r', '\n');
+            int curPos = sci.CurrentPos;
+            int startPos = sci.PositionFromLine(line);
+            int offset = sci.MBSafeLengthFromBytes(txt, position - startPos);
             
             ReformatOptions options = new ReformatOptions();
-            options.Newline = LineEndDetector.GetNewLineMarker(Sci.EOLMode);
+            options.Newline = LineEndDetector.GetNewLineMarker(sci.EOLMode);
             options.CondenseWhitespace = ASContext.CommonSettings.CondenseWhitespace;
             options.BraceAfterLine = ASContext.CommonSettings.ReformatBraces 
                 && PluginBase.MainForm.Settings.CodingStyle == CodingStyle.BracesAfterLine;
@@ -1230,15 +1203,22 @@ namespace ASCompletion.Completion
             options.IsPhp = ASContext.Context.Settings.LanguageId == "PHP";
             options.IsHaXe = ASContext.Context.Settings.LanguageId == "HAXE";
 
+            if (options.IsHaXe)
+            {
+                var initialStyle = sci.BaseStyleAt(startPos);
+                if (initialStyle == 6) options.InString = 1;
+                else if (initialStyle == 7) options.InString = 2;
+            }
+
             int newOffset = offset;
             string replace = Reformater.ReformatLine(txt, options, ref newOffset);
 
             if (replace != txt)
             {
                 position = curPos + newOffset - offset;
-                Sci.SetSel(startPos, startPos + Sci.MBSafeTextLength(txt));
-                Sci.ReplaceSel(replace);
-                Sci.SetSel(position, position);
+                sci.SetSel(startPos, startPos + sci.MBSafeTextLength(txt));
+                sci.ReplaceSel(replace);
+                sci.SetSel(position, position);
             }
         }
 
@@ -1426,9 +1406,8 @@ namespace ASCompletion.Completion
         static private int calltipOffset;
         static private ClassModel calltipRelClass;
         static private string prevParam = "";
-        static private string paramInfo = "";
 
-        static public bool HasCalltip()
+        public static bool HasCalltip()
         {
             return UITools.CallTip.CallTipActive && (calltipDef != null);
         }
@@ -1436,14 +1415,9 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Show highlighted calltip
         /// </summary>
-        /// <param name="Sci">Scintilla control</param>
-        /// <param name="paramNumber">Highlight param number</param>
-        static private void ShowCalltip(ScintillaControl Sci, int paramNumber)
-        {
-            ShowCalltip(Sci, paramNumber, false);
-        }
-
-        static private void ShowCalltip(ScintillaControl Sci, int paramIndex, bool forceRedraw)
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="paramIndex">Highlight param number</param>
+        private static void ShowCalltip(ScintillaControl sci, int paramIndex)
         {
             // measure highlighting
             int start = calltipDef.IndexOf('(');
@@ -1469,16 +1443,6 @@ namespace ASCompletion.Completion
                 }
                 char[] toClean = new char[] { ' ', '\t', '\n', '\r', '*', '?' };
                 paramName = paramName.Trim(toClean);
-
-                if (paramName.Length > 0)
-                {
-                    Match mParam = Regex.Match(calltipMember.Comments, "@param\\s+" + Regex.Escape(paramName) + "[ \t:]+(?<desc>[^\r\n]*)");
-                    if (mParam.Success)
-                        paramInfo = "\n" + "[U]" + paramName + ":" + "[/U]" + mParam.Groups["desc"].Value.Trim();
-                    else
-                        paramInfo = "";
-                }
-                else paramInfo = "";
             }
 
             // show calltip
@@ -1487,7 +1451,7 @@ namespace ASCompletion.Completion
                 prevParam = paramName;
                 calltipDetails = UITools.Manager.ShowDetails;
                 string text = calltipDef + ASDocumentation.GetTipDetails(calltipMember, paramName);
-                UITools.CallTip.CallTipShow(calltipPos - calltipOffset, text, forceRedraw);
+                UITools.CallTip.CallTipShow(calltipPos - calltipOffset, text, false);
             }
 
             // highlight
@@ -1578,21 +1542,17 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Display method signature
         /// </summary>
-        /// <param name="Sci">Scintilla control</param>
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="autoHide">Auto-started completion (is false when pressing Ctrl+Space)</param>
         /// <returns>Auto-completion has been handled</returns>
-        static public bool HandleFunctionCompletion(ScintillaControl Sci, bool autoHide)
-        {
-            return HandleFunctionCompletion(Sci, autoHide, false);
-        }
-
-        static public bool HandleFunctionCompletion(ScintillaControl Sci, bool autoHide, bool forceRedraw)
+        public static bool HandleFunctionCompletion(ScintillaControl sci, bool autoHide)
         {
             // only auto-complete where it makes sense
             if (DeclarationSectionOnly()) 
                 return false;
 
-            int position = Sci.CurrentPos - 1;
-            int paramIndex = FindParameterIndex(Sci, ref position);
+            int position = sci.CurrentPos - 1;
+            int paramIndex = FindParameterIndex(sci, ref position);
             if (position < 0) return false;
             
             // continuing calltip ?
@@ -1600,90 +1560,96 @@ namespace ASCompletion.Completion
             {
                 if (calltipPos == position)
                 {
-                    ShowCalltip(Sci, paramIndex, forceRedraw);
+                    ShowCalltip(sci, paramIndex);
                     return true;
                 }
-                else UITools.CallTip.Hide();
+                UITools.CallTip.Hide();
             }
 
-            if (!ResolveFunction(Sci, position, autoHide))
+            if (!ASContext.Context.CodeComplete.ResolveFunction(sci, position, autoHide))
                 return true;
 
             // EventDispatchers
             if (paramIndex == 0 && calltipRelClass != null && calltipMember.Name.EndsWithOrdinal("EventListener"))
             {
-                ShowListeners(Sci, position, calltipRelClass);
+                ShowListeners(sci, position, calltipRelClass);
                 return true;
             }
 
             // show calltip
-            ShowCalltip(Sci, paramIndex, forceRedraw);
+            ShowCalltip(sci, paramIndex);
             return true;
         }
 
         /// <summary>
         /// Find declaration of function called in code
         /// </summary>
+        /// <param name="sci">Scintilla control</param>
         /// <param name="position">Position obtained by FindParameterIndex()</param>
+        /// <param name="autoHide">Auto-started completion (is false when pressing Ctrl+Space)</param>
         /// <returns>Function successfully resolved</returns>
-        private static bool ResolveFunction(ScintillaControl Sci, int position, bool autoHide)
+        internal bool ResolveFunction(ScintillaControl sci, int position, bool autoHide)
         {
             calltipPos = 0;
             calltipMember = null;
             calltipRelClass = null;
-
+            var ctx = ASContext.Context;
             // get expression at cursor position
-            ASExpr expr = GetExpression(Sci, position, true);
+            var expr = GetExpression(sci, position, true);
             if (string.IsNullOrEmpty(expr.Value)
-                || (expr.WordBefore == "function" && expr.Separator == ' '))
+                || (expr.WordBefore == ctx.Features.functionKey && expr.Separator == " "))
                 return false;
-
-            // Context
-            IASContext ctx = ASContext.Context;
-            FileModel aFile = ctx.CurrentModel;
-            ClassModel aClass = ctx.CurrentClass;
-            ASResult result;
-
             // Expression before cursor
             expr.LocalVars = ParseLocalVars(expr);
-            result = EvalExpression(expr.Value, expr, aFile, aClass, true, true);
-            if (!result.IsNull() && result.Member == null && result.Type != null)
+            var result = EvalExpression(expr.Value, expr, ctx.CurrentModel, ctx.CurrentClass, true, true);
+            return ResolveFunction(sci, position, result, autoHide);
+        }
+
+        /// <summary>
+        /// Find declaration of function called in code
+        /// </summary>
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="position">Position obtained by FindParameterIndex()</param>
+        /// <param name="expr">Expression before cursor</param>
+        /// <param name="autoHide">Auto-started completion (is false when pressing Ctrl+Space)</param>
+        /// <returns>Function successfully resolved</returns>
+        protected virtual bool ResolveFunction(ScintillaControl sci, int position, ASResult expr, bool autoHide)
+        {
+           
+            if (!expr.IsNull() && expr.Member == null && expr.Type != null)
             {
-                foreach(MemberModel member in result.Type.Members)
-                    if (member.Name == result.Type.Constructor)
+                foreach (MemberModel member in expr.Type.Members)
+                    if (member.Name == expr.Type.Constructor)
                     {
-                        result.Member = member;
+                        expr.Member = member;
                         break;
                     }
             }
-            if (result.IsNull() || (result.Member != null && (result.Member.Flags & FlagType.Function) == 0))
+            var ctx = ASContext.Context;
+            if (expr.IsNull() || (expr.Member != null && (expr.Member.Flags & FlagType.Function) == 0))
             {
                 // custom completion
-                MemberModel customMethod = ctx.ResolveFunctionContext(Sci, expr, autoHide);
-                if (customMethod != null)
-                {
-                    result = new ASResult();
-                    result.Member = customMethod;
-                }
+                MemberModel customMethod = ctx.ResolveFunctionContext(sci, expr.Context, autoHide);
+                if (customMethod != null) expr = new ASResult {Member = customMethod, Context = new ASExpr()};
             }
-            if (result.IsNull()) 
+            if (expr.IsNull())
                 return false;
 
-            MemberModel method = result.Member;
+            MemberModel method = expr.Member;
             if (method == null)
             {
-                if (result.Type == null)
+                if (expr.Type == null)
                     return false;
-                string constructor = ASContext.GetLastStringToken(result.Type.Name, ".");
-                result.Member = method = result.Type.Members.Search(constructor, FlagType.Constructor, 0);
+                string constructor = ASContext.GetLastStringToken(expr.Type.Name, ".");
+                expr.Member = method = expr.Type.Members.Search(constructor, FlagType.Constructor, 0);
                 if (method == null)
                     return false;
             }
             else if ((method.Flags & FlagType.Function) == 0)
             {
-                if (method.Name == "super" && result.Type != null)
+                if (method.Name == "super" && expr.Type != null)
                 {
-                    result.Member = method = result.Type.Members.Search(result.Type.Constructor, FlagType.Constructor, 0);
+                    expr.Member = method = expr.Type.Members.Search(expr.Type.Constructor, FlagType.Constructor, 0);
                     if (method == null)
                         return false;
                 }
@@ -1691,40 +1657,39 @@ namespace ASCompletion.Completion
             }
 
             // inherit doc
-            while ((method.Flags & FlagType.Override) > 0 && result.InClass != null
+            while ((method.Flags & FlagType.Override) > 0 && expr.InClass != null
                 && (method.Comments == null || method.Comments.Trim() == "" || method.Comments.Contains("@inheritDoc")))
             {
-                FindMember(method.Name, result.InClass.Extends, result, 0, 0);
-                method = result.Member;
-                if (method == null) 
+                FindMember(method.Name, expr.InClass.Extends, expr, 0, 0);
+                method = expr.Member;
+                if (method == null)
                     return false;
             }
-            if ((method.Comments == null || method.Comments.Trim() == "")
-                && result.InClass != null && result.InClass.Implements != null)
+            if ((method.Comments == null || method.Comments.Trim() == "") && expr.InClass?.Implements != null)
             {
                 ASResult iResult = new ASResult();
-                foreach (string type in result.InClass.Implements)
+                foreach (string type in expr.InClass.Implements)
                 {
-                    ClassModel model = ASContext.Context.ResolveType(type, result.InFile);
+                    ClassModel model = ctx.ResolveType(type, expr.InFile);
                     FindMember(method.Name, model, iResult, 0, 0);
                     if (iResult.Member != null)
                     {
-                        iResult.RelClass = result.RelClass;
-                        result = iResult;
+                        iResult.RelClass = expr.RelClass;
+                        iResult.Context = expr.Context;
+                        expr = iResult;
                         method = iResult.Member;
                         break;
                     }
                 }
             }
-
-            expr.Position = position;
-            FunctionContextResolved(Sci, expr, method, result.RelClass, false);
+            expr.Context.Position = position;
+            FunctionContextResolved(sci, expr.Context, method, expr.RelClass, false);
             return true;
         }
 
-        public static void FunctionContextResolved(ScintillaControl Sci, ASExpr expr, MemberModel method, ClassModel inClass, bool showTip)
+        public static void FunctionContextResolved(ScintillaControl sci, ASExpr expr, MemberModel method, ClassModel inClass, bool showTip)
         {
-            if (method == null || string.IsNullOrEmpty(method.Name)) 
+            if (string.IsNullOrEmpty(method?.Name)) 
                 return;
             if (calltipMember != null && calltipMember.Name == method.Name)
             {
@@ -1744,10 +1709,11 @@ namespace ASCompletion.Completion
 
             if (showTip)
             {
-                position = Sci.CurrentPos - 1;
-                int paramIndex = FindParameterIndex(Sci, ref position);
+                position = sci.CurrentPos - 1;
+                sci.Colourise(0, -1);
+                int paramIndex = FindParameterIndex(sci, ref position);
                 if (position < 0) return;
-                ShowCalltip(Sci, paramIndex, true);
+                ShowCalltip(sci, paramIndex);
             }
         }
 
@@ -1776,65 +1742,38 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Locate beginning of function call parameters and return index of current parameter
         /// </summary>
-        internal static int FindParameterIndex(ScintillaControl Sci, ref int position)
+        internal static int FindParameterIndex(ScintillaControl sci, ref int position)
         {
+            var context = ASContext.Context;
             int parCount = 0;
             int braCount = 0;
             int comaCount = 0;
             int arrCount = 0;
             var genCount = 0;
-            var dquCount = 0;
-            var squCount = 0;
+
             while (position >= 0)
             {
-                var style = Sci.BaseStyleAt(position);
-                if (style == 19)
+                var style = sci.BaseStyleAt(position);
+                if ((!IsLiteralStyle(style) && IsTextStyleEx(style)) || context.CodeComplete.IsStringInterpolationStyle(sci, position))
                 {
-                    string keyword = GetWordLeft(Sci, ref position);
-                    if (!ASContext.Context.Features.HasTypePreKey(keyword))
-                    {
-                        position = -1;
-                        break;
-                    }
-                }
-                if ((!IsLiteralStyle(style) && IsTextStyleEx(style)) || IsInterpolationExpr(Sci, position))
-                {
-                    var c = (char)Sci.CharAt(position);
+                    var c = (char)sci.CharAt(position);
                     if (c <= ' ')
                     {
                         position--;
                         continue;
                     }
-                    if (dquCount > 0)
-                    {
-                        if (c != '"' || Sci.CharAt(position - 1) == '\\')
-                        {
-                            position--;
-                            continue;
-                        }
-                        if (c == '"' && Sci.CharAt(position - 1) != '\\') dquCount--;
-                    }
-                    else if (squCount > 0)
-                    {
-                        if (c != '\'' || Sci.CharAt(position - 1) == '\\')
-                        {
-                            position--;
-                            continue;
-                        }
-                        if (c == '\'' && Sci.CharAt(position - 1) != '\\') squCount--;
-                    }
-                    else if (c == ';' && braCount == 0)
-                    {
-                        position = -1;
-                        break;
-                    }
                     // skip {} () [] blocks
-                    else if ((braCount > 0 && c != '{' && c != '}')
-                            || (parCount > 0 && c != '(' && c != ')')
-                            || (arrCount > 0 && c != '[' && c != ']'))
+                    if ((braCount > 0 && c != '{' && c != '}')
+                        || (parCount > 0 && c != '(' && c != ')')
+                        || (arrCount > 0 && c != '[' && c != ']'))
                     {
                         position--;
                         continue;
+                    }
+                    if (c == ';' && braCount == 0)
+                    {
+                        position = -1;
+                        break;
                     }
                     // new block
                     else if (c == '}') braCount++;
@@ -1859,8 +1798,6 @@ namespace ASCompletion.Completion
                     }
                     else if (c == '>') genCount++;
                     else if (c == '<') genCount--;
-                    else if (c == '"' && (Sci.CharAt(position - 1) != '\\' || IsEscapedCharacter(Sci, position - 1))) dquCount++;
-                    else if (c == '\'' && (Sci.CharAt(position - 1) != '\\' || IsEscapedCharacter(Sci, position - 1))) squCount++;
                     // new parameter reached
                     else if (c == ',' && parCount == 0 && genCount == 0)
                         comaCount++;
@@ -1977,7 +1914,7 @@ namespace ASCompletion.Completion
             IASContext ctx = ASContext.Context;
             ContextFeatures features = ctx.Features;
             int dotIndex = expr.Value.LastIndexOfOrdinal(features.dot);
-            if (dotIndex == 0 && expr.Separator != '"')
+            if (dotIndex == 0 && expr.Separator != "\"")
                 return true;
 
             // complete keyword
@@ -2001,12 +1938,12 @@ namespace ASCompletion.Completion
                         return HandleImportCompletion(Sci, expr.Value, autoHide);
                 }
                 // type
-                else if (features.hasEcmaTyping && expr.Separator == ':'
+                else if (features.hasEcmaTyping && expr.Separator == ":"
                     && HandleColonCompletion(Sci, expr.Value, autoHide))
                     return true;
 
                 // no completion
-                if ((expr.BeforeBody && expr.Separator != '=')
+                if ((expr.BeforeBody && expr.Separator != "=")
                     || expr.coma == ComaExpression.AnonymousObject
                     || expr.coma == ComaExpression.FunctionDeclaration)
                     return false;
@@ -2015,7 +1952,7 @@ namespace ASCompletion.Completion
                 {
                     int cpos = Sci.CurrentPos - 1;
                     int paramIndex = FindParameterIndex(Sci, ref cpos);
-                    if (calltipPos != cpos) ResolveFunction(Sci, cpos, autoHide);
+                    if (calltipPos != cpos) ctx.CodeComplete.ResolveFunction(Sci, cpos, autoHide);
                     if (calltipMember == null) return false;
                     argumentType = ResolveParameterType(paramIndex, true);
                     if (argumentType.IsVoid()) return false;
@@ -2034,7 +1971,10 @@ namespace ASCompletion.Completion
                 else if (cMember != null && line == cMember.LineFrom)
                 {
                     string text = Sci.GetLine(line);
-                    int p = text.IndexOfOrdinal(cMember.Name);
+                    int p;
+                    if ((cMember.Flags & FlagType.Constructor) != 0 && !string.IsNullOrEmpty(features.ConstructorKey))
+                        p = text.IndexOfOrdinal(features.ConstructorKey);
+                    else p = text.IndexOfOrdinal(cMember.Name);
                     if (p < 0 || position < Sci.PositionFromLine(line) + p)
                         return HandleDeclarationCompletion(Sci, expr.Value, autoHide);
                 }
@@ -2058,7 +1998,7 @@ namespace ASCompletion.Completion
             // Context
             ASResult result;
             ClassModel tmpClass;
-            bool outOfDate = (expr.Separator == ':') && ctx.UnsetOutOfDate();
+            bool outOfDate = (expr.Separator == ":") && ctx.UnsetOutOfDate();
             FileModel cFile = ctx.CurrentModel;
             ClassModel cClass = ctx.CurrentClass;
 
@@ -2085,7 +2025,7 @@ namespace ASCompletion.Completion
             else
             {
                 result = new ASResult();
-                if (expr.Separator == '"')
+                if (expr.Separator == "\"")
                 {
                     tmpClass = ctx.ResolveType(ctx.Features.stringKey, null);
                     result.Type = tmpClass;
@@ -2116,7 +2056,7 @@ namespace ASCompletion.Completion
                 mix.Merge(result.InFile.Members);
             }
             // list instance members
-            else if (expr.ContextFunction != null || expr.Separator != ':' || (dotIndex > 0 && !result.IsNull()))
+            else if (expr.ContextFunction != null || expr.Separator != ":" || (dotIndex > 0 && !result.IsNull()))
             {
                 // user setting may ask to hide some members
                 bool limitMembers = autoHide; // ASContext.Context.HideIntrinsicMembers || (autoHide && !ASContext.Context.AlwaysShowIntrinsicMembers);
@@ -2168,6 +2108,7 @@ namespace ASCompletion.Completion
                 else
                     list.Add(new MemberItem(member));
             }
+            EventManager.DispatchEvent(null, new DataEvent(EventType.Command, "ASCompletion.DotCompletion", list));
             CompletionList.Show(list, autoHide, tail);
 
             // smart focus token
@@ -2246,15 +2187,16 @@ namespace ASCompletion.Completion
             if (CompletionList.Active) reSelect = CompletionList.SelectedLabel;
 
             // show completion
-            List<ICompletionListItem> customList = new List<ICompletionListItem>();
+            List<ICompletionListItem> list = new List<ICompletionListItem>();
             bool testActive = !CompletionList.Active && expr.Position != position;
             foreach (MemberModel member in items)
             {
-                if (testActive && member.Name == word) 
+                if (testActive && member.Name == word)
                     return;
-                customList.Add(new MemberItem(member));
+                list.Add(new MemberItem(member));
             }
-            CompletionList.Show(customList, autoHide, word);
+            EventManager.DispatchEvent(null, new DataEvent(EventType.Command, "ASCompletion.DotCompletion", list));
+            CompletionList.Show(list, autoHide, word);
 
             if (reSelect != null) CompletionList.SelectItem(reSelect);
         }
@@ -2297,7 +2239,7 @@ namespace ASCompletion.Completion
             return null;
         }
 
-        static private bool HandleNewCompletion(ScintillaControl sci, string tail, bool autoHide, string keyword)
+        protected static bool HandleNewCompletion(ScintillaControl sci, string tail, bool autoHide, string keyword)
         {
             List<ICompletionListItem> list;
 
@@ -2329,12 +2271,13 @@ namespace ASCompletion.Completion
                 IASContext ctx = ASContext.Context;
                 ClassModel aClass = ctx.ResolveType(newItemType, ctx.CurrentModel);
 
-                ICompletionListItem newItem;
+                ICompletionListItem newItem = null;
                 if (!aClass.IsVoid())
                 {
                     // AS2 special srictly typed Arrays supports
                     int p = newItemType.IndexOf('@');
-                    if (p > -1)
+                    if (p > -1) newItemType = newItemType.Substring(0, p);
+                    else if (!string.IsNullOrEmpty(aClass.IndexType))
                     {
                         newItemType = newItemType.Substring(0, p);
                         newItem = null;
@@ -2374,11 +2317,13 @@ namespace ASCompletion.Completion
                     list.Insert(itemIndex, newItem);
                 }
 
+                list.Sort(new CompletionItemCaseSensitiveImportComparer());
                 CompletionList.Show(list, autoHide, tail);
                 CompletionList.SelectItem(newItemType);
             }
             else
             {
+                list.Sort(new CompletionItemCaseSensitiveImportComparer());
                 CompletionList.Show(list, autoHide, tail);
             }
 
@@ -2580,6 +2525,56 @@ namespace ASCompletion.Completion
             return true;
         }
 
+        /// <summary>
+        /// Handle completion after inserting a space character
+        /// </summary>
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="position">Current cursor position</param>
+        /// <param name="autoHide">Don't keep the list open if the word does not match</param>
+        /// <returns>Auto-completion has been handled</returns>
+        private bool HandleWhiteSpaceCompletion(ScintillaControl sci, int position, bool autoHide)
+        {
+            var features = ASContext.Context.Features;
+            var pos = position - 1;
+            var word = GetWordLeft(sci, ref pos);
+            if (word.Length == 0)
+            {
+                var c = (char)sci.CharAt(pos);
+                if (c != ':' || !features.hasEcmaTyping)
+                {
+                    if (autoHide && (c == '(' || c == ',') && !ASContext.CommonSettings.DisableCallTip)
+                        return HandleFunctionCompletion(sci, autoHide);
+                    return false;
+                }
+                return HandleColonCompletion(sci, "", autoHide);
+            }
+            if (word == "package" || features.typesKeywords.Contains(word)) return false;
+            // new/extends/instanceof/...
+            if (features.HasTypePreKey(word)) return HandleNewCompletion(sci, "", autoHide, word);
+            var beforeBody = true;
+            var expr = CurrentResolvedContext?.Result?.Context;
+            if (expr != null) beforeBody = expr.ContextFunction == null || expr.BeforeBody;
+            if (!beforeBody && features.codeKeywords.Contains(word)) return false;
+            // override
+            if (word == features.overrideKey) return ASGenerator.HandleGeneratorCompletion(sci, autoHide, word);
+            // import
+            if (features.hasImports && (word == features.importKey || word == features.importKeyAlt))
+                return HandleImportCompletion(sci, "", autoHide);
+            // public/internal/private/protected/static
+            if (features.accessKeywords.Contains(word)) return HandleDeclarationCompletion(sci, "", autoHide);
+            return HandleWhiteSpaceCompletion(sci, position, word, autoHide);
+        }
+
+        /// <summary>
+        /// Handle completion after inserting a space character
+        /// </summary>
+        /// <param name="sci">Scintilla control</param>
+        /// <param name="position">Current cursor position</param>
+        /// <param name="wordLeft">Word before cursor</param>
+        /// <param name="autoHide">Don't keep the list open if the word does not match</param>
+        /// <returns>Auto-completion has been handled</returns>
+        protected virtual bool HandleWhiteSpaceCompletion(ScintillaControl sci, int position, string wordLeft, bool autoHide) => false;
+
         #region expression_evaluator
 
         /// <summary>
@@ -2612,13 +2607,22 @@ namespace ASCompletion.Completion
         {
             ASResult notFound = new ASResult {Context = context};
             if (string.IsNullOrEmpty(expression)) return notFound;
+            var value = expression.TrimEnd('.');
+            if (context.SubExpressions?.Count == 1) value = value.Replace(char.IsLetter(value[0]) ? ".#0~" : "#0~", context.SubExpressions.First());
+            if (!string.IsNullOrEmpty(context.WordBefore) && ASContext.Context.Features.OtherOperators.Contains(context.WordBefore))
+            {
+                value = context.WordBefore + " " + value;
+            }
 
             var ctx = ASContext.Context;
+            var type = ctx.ResolveToken(value, inClass.InFile);
+            if (!type.IsVoid()) return new ASResult {Type = type, Context = context, InClass = type, InFile = type.InFile, Path = context.Value};
+
             var features = ctx.Features;
             if (expression.StartsWithOrdinal(features.dot))
             {
                 if (expression.StartsWithOrdinal(features.dot + "#")) expression = expression.Substring(1);
-                else if (context.Separator == '"') expression = '"' + expression;
+                else if (context.Separator == "\"") expression = "\"" + expression;
                 else return notFound;
             }
 
@@ -2628,32 +2632,20 @@ namespace ASCompletion.Completion
             string token = tokens[0];
             if (token.Length == 0) return notFound;
             if (asFunction && tokens.Length == 1) token += "(";
-
+            type = ctx.ResolveToken(token, inClass.InFile);
+            if (!type.IsVoid()) return EvalTail(context, inFile, new ASResult {Type = type}, tokens, complete, filterVisibility) ?? notFound;
             ASResult head = null;
-            if (token.StartsWith('"')) head = new ASResult {Type = ctx.ResolveType(features.stringKey, null)};
-            else if (token == "{}") head = new ASResult {Type = ctx.ResolveType(features.objectKey, inFile)};
-            else if (token == "true" || token == "false") head = new ASResult {Type = ctx.ResolveType(features.booleanKey, inFile)};
-            else if (features.hasE4X && token == "</>") head = new ASResult {Type = ctx.ResolveType("XML", inFile)};
-            else if (char.IsDigit(token, 0)) head = new ASResult {Type = ctx.ResolveType(features.numberKey, inClass.InFile)};
-            if (head?.Type != null) return EvalTail(context, inFile, head, tokens, complete, filterVisibility) ?? notFound;
-            if (token.StartsWith('#'))
+            if (token[0] == '#')
             {
                 Match mSub = re_sub.Match(token);
                 if (mSub.Success)
                 {
-                    bool haxeCast = false;
-                    if (ctx.CurrentModel.haXe && context.SubExpressions.Contains("cast"))
-                    {
-                        haxeCast = true;
-                        context.SubExpressions.Remove("cast");
-                    }
                     string subExpr = context.SubExpressions[Convert.ToInt16(mSub.Groups["index"].Value)];
-                    if (haxeCast) subExpr = subExpr.Replace(" ", "").Replace(",", " as ");
                     // parse sub expression
                     subExpr = subExpr.Substring(1, subExpr.Length - 2).Trim();
                     ASExpr subContext = new ASExpr(context);
                     subContext.SubExpressions = ExtractedSubex = new List<string>();
-                    subExpr = re_balancedParenthesis.Replace(subExpr, new MatchEvaluator(ExtractSubex));
+                    subExpr = re_balancedParenthesis.Replace(subExpr, ExtractSubex);
                     Match m = re_refineExpression.Match(subExpr);
                     if (!m.Success) return notFound;
                     Regex re_dot = new Regex("[\\s]*" + Regex.Escape(features.dot) + "[\\s]*");
@@ -2773,7 +2765,7 @@ namespace ASCompletion.Completion
 
                     // if the current class ends back to the starting point (classA -> classB -> classA), 
                     // restore the private, protected, and internal member references
-                    if (curClass != null && curClass == step.Type)
+                    if (curClass == step.Type)
                     {
                         // full visibility for this evaluation only
                         Visibility selfVisibility = acc | Visibility.Private | Visibility.Protected | Visibility.Internal;
@@ -2844,7 +2836,7 @@ namespace ASCompletion.Completion
         /// Find variable type in function context
         /// </summary>
         /// <param name="token">Variable name</param>
-        /// <param name="context">Completion context</param>
+        /// <param name="local">Completion context</param>
         /// <param name="inFile">File context</param>
         /// <param name="inClass">Class context</param>
         /// <returns>Class/member struct</returns>
@@ -2869,50 +2861,50 @@ namespace ASCompletion.Completion
             if (!inClass.IsVoid() && !string.IsNullOrEmpty(context.Features.ConstructorKey) && token == context.Features.ConstructorKey && local.BeforeBody)
                 return EvalVariable(inClass.Name, local, inFile, inClass);
             var contextMember = local.ContextMember;
-            if (contextMember == null || local.coma != ComaExpression.None || !local.BeforeBody || (contextMember.Flags & (FlagType.Getter | FlagType.Setter)) > 0)
+            if (contextMember == null || local.coma != ComaExpression.None || !local.BeforeBody || (contextMember.Flags & (FlagType.Getter | FlagType.Setter)) > 0
+                || (local.BeforeBody && local.WordBefore != context.Features.functionKey))
             {
-            // local vars
-            if (local.LocalVars != null)
-            {
-                // Haxe 3 get/set keyword in properties declaration
-                    if ((token == "set" || token == "get") && local.ContextFunction == null
-                        && contextMember != null && contextMember.Parameters != null && contextMember.Parameters.Count == 2)
+                // local vars
+                if (local.LocalVars != null)
                 {
+                    // Haxe 3 get/set keyword in properties declaration
+                    if ((token == "set" || token == "get") && local.ContextFunction == null && contextMember?.Parameters != null && contextMember.Parameters.Count == 2)
+                    {
                         if (token == "get" && contextMember.Parameters[0].Name == "get") return EvalVariable("get_" + contextMember.Name, local, inFile, inClass);
                         if (token == "set" && contextMember.Parameters[1].Name == "set") return EvalVariable("set_" + contextMember.Name, local, inFile, inClass);
-                }
-
-                foreach (MemberModel var in local.LocalVars)
-                {
-                    if (var.Name == token)
+                    }
+                    var checkFunction = local.SubExpressions != null && local.SubExpressions.Count == 1
+                                        && !string.IsNullOrEmpty(local.Value) && local.Value.IndexOf('.') == local.Value.IndexOf(".#0~");
+                    foreach (MemberModel var in local.LocalVars)
                     {
-                        result.Member = var;
-                        result.InFile = inFile;
-                        result.InClass = inClass;
-                        if (var.Type == null && (var.Flags & FlagType.LocalVar) > 0
-                            && context.Features.hasInference /*&& !context.Features.externalCompletion*/)
-                            InferVariableType(local, var);
+                        if (var.Name == token && (!checkFunction || var.Flags.HasFlag(FlagType.Function)))
+                        {
+                            result.Member = var;
+                            result.InFile = inFile;
+                            result.InClass = inClass;
+                            if (var.Type == null && var.Flags.HasFlag(FlagType.LocalVar) && context.Features.hasInference)
+                                context.CodeComplete.InferVariableType(local, var);
 
-                        if ((var.Flags & FlagType.Function) > 0)
-                            result.Type = ResolveType("Function", null);
-                        else
-                            result.Type = ResolveType(var.Type, inFile);
+                            if (var.Flags.HasFlag(FlagType.Function))
+                                result.Type = context.ResolveType("Function", null);
+                            else
+                                result.Type = ResolveType(var.Type, inFile);
 
-                        return result;
+                            return result;
+                        }
                     }
                 }
-            }
-            // method parameters
-            if (local.ContextFunction != null && local.ContextFunction.Parameters != null)
-            {
-                    foreach (MemberModel para in local.ContextFunction.Parameters)
-                if (para.Name == token || (para.Name[0] == '?' && para.Name.Substring(1) == token))
+                // method parameters
+                if (local.ContextFunction?.Parameters != null)
                 {
-                    result.Member = para;
-                    result.Type = ResolveType(para.Type, inFile);
-                    return result;
+                    foreach (MemberModel para in local.ContextFunction.Parameters)
+                        if (para.Name == token || (para.Name[0] == '?' && para.Name.Substring(1) == token))
+                        {
+                            result.Member = para;
+                            result.Type = ResolveType(para.Type, inFile);
+                            return result;
+                        }
                 }
-            }
             }
             // class members
             if (!inClass.IsVoid())
@@ -3030,7 +3022,7 @@ namespace ASCompletion.Completion
                         {
                             foreach (ClassModel aClass in aDecl.InFile.Classes)
                                 if (aClass.Name == aDecl.Name) return aClass;
-                            return context.GetModel(aDecl.InFile.Package, qname, inFile != null ? inFile.Package : null);
+                            return context.GetModel(aDecl.InFile.Package, qname, inFile?.Package);
                         }
                         else return context.ResolveType(aDecl.Type, inFile);
                     }
@@ -3042,40 +3034,44 @@ namespace ASCompletion.Completion
         /// <summary>
         /// Infer very simple cases: var foo = {expression}
         /// </summary>
-        private static void InferVariableType(ASExpr local, MemberModel var)
+        private void InferVariableType(ASExpr local, MemberModel var)
         {
-            ScintillaControl sci = ASContext.CurSciControl;
-            if (sci == null || var.LineFrom >= sci.LineCount) 
-                return;
+            var sci = ASContext.CurSciControl;
+            if (sci == null || var.LineFrom >= sci.LineCount) return;
+            InferVariableType(sci, local, var);
+        }
+
+        protected virtual void InferVariableType(ScintillaControl sci, ASExpr local, MemberModel var)
+        {
             // is it a simple affectation inference?
-            string text = sci.GetLine(var.LineFrom);
-            Regex reVar = new Regex("\\s*var\\s+" + var.Name + "\\s*=([^;]+)");
-            Match m = reVar.Match(text);
-            if (m.Success && m.Groups[1].Length > 1)
+            var text = sci.GetLine(var.LineFrom);
+            var m = Regex.Match(text, "\\s*var\\s+" + var.Name + "\\s*=([^;]+)");
+            if (!m.Success) return;
+            var rvalue = m.Groups[1];
+            if (rvalue.Length <= 1) return;
+            InferVariableType(sci, text, sci.PositionFromLine(var.LineFrom) + rvalue.Index, local, var);
+        }
+
+        protected virtual void InferVariableType(ScintillaControl sci, string declarationLine, int rvalueStart, ASExpr local, MemberModel var)
+        {
+            int p = declarationLine.IndexOf(';');
+            var text = declarationLine.TrimEnd();
+            if (p < 0) p = text.Length;
+            if (text.EndsWith('(')) p--;
+            // resolve expression
+            ASExpr expr = GetExpression(sci, sci.PositionFromLine(var.LineFrom) + p, true);
+            if (string.IsNullOrEmpty(expr.Value)) return;
+            ASResult result = EvalExpression(expr.Value, expr, ASContext.Context.CurrentModel, ASContext.Context.CurrentClass, true, false);
+            if (result.IsNull()) return;
+            if (result.Type != null && !result.Type.IsVoid())
             {
-                int p = text.IndexOf(';');
-                text = text.TrimEnd();
-                if (p < 0) p = text.Length;
-                if (text.EndsWith('(')) p--;
-                // resolve expression
-                ASExpr expr = GetExpression(sci, sci.PositionFromLine(var.LineFrom) + p, true);
-                if (!string.IsNullOrEmpty(expr.Value))
-                {
-                    ASResult result = EvalExpression(expr.Value, expr, ASContext.Context.CurrentModel, ASContext.Context.CurrentClass, true, false);
-                    if (!result.IsNull())
-                    {
-                        if (result.Type != null && !result.Type.IsVoid())
-                        {
-                            var.Type = result.Type.QualifiedName;
-                            var.Flags |= FlagType.Inferred;
-                        }
-                        else if (result.Member != null)
-                        {
-                            var.Type = result.Member.Type;
-                            var.Flags |= FlagType.Inferred;
-                        } 
-                    }
-                }
+                var.Type = result.Type.QualifiedName;
+                var.Flags |= FlagType.Inferred;
+            }
+            else if (result.Member != null)
+            {
+                var.Type = result.Member.Type;
+                var.Flags |= FlagType.Inferred;
             }
         }
 
@@ -3203,7 +3199,7 @@ namespace ASCompletion.Completion
             }
             else result.RelClass = inClass;
             // previous member accessed as an array
-            if (token == "[]")
+            if (token.Length >= 2 && token.First() == '[' && token.Last() == ']')
             {
                 result.IsStatic = false;
                 if (result.Type == null || result.Type.IndexType == null)
@@ -3355,18 +3351,15 @@ namespace ASCompletion.Completion
         private static List<string> ExtractedSubex;
 
         /// <summary>
-        /// Find Actionscript expression at cursor position
+        /// Find expression at cursor position
         /// </summary>
         /// <param name="sci">Scintilla Control</param>
         /// <param name="position">Cursor position</param>
         /// <returns></returns>
-        internal static ASExpr GetExpression(ScintillaControl sci, int position)
-        {
-            return GetExpression(sci, position, false);
-        }
+        internal static ASExpr GetExpression(ScintillaControl sci, int position) => GetExpression(sci, position, false);
 
         /// <summary>
-        /// Find Actionscript expression at cursor position
+        /// Find expression at cursor position
         /// </summary>
         /// <param name="sci">Scintilla Control</param>
         /// <param name="position">Cursor position</param>
@@ -3374,13 +3367,14 @@ namespace ASCompletion.Completion
         /// <returns></returns>
         private static ASExpr GetExpression(ScintillaControl sci, int position, bool ignoreWhiteSpace)
         {
-            bool haXe = ASContext.Context.CurrentModel.haXe;
+            var context = ASContext.Context;
+            bool haXe = context.CurrentModel.haXe;
             ASExpr expression = new ASExpr();
             expression.Position = position;
-            expression.Separator = ' ';
+            expression.Separator = " ";
 
             // file's member declared at this position
-            expression.ContextMember = ASContext.Context.CurrentMember;
+            expression.ContextMember = context.CurrentMember;
             int minPos = 0;
             if (expression.ContextMember != null)
             {
@@ -3423,7 +3417,7 @@ namespace ASCompletion.Completion
             string characterClass = ScintillaControl.Configuration.GetLanguage(sci.ConfigurationLanguage).characterclass.Characters;
 
             // get expression before cursor
-            ContextFeatures features = ASContext.Context.Features;
+            ContextFeatures features = context.Features;
             StringBuilder sb = new StringBuilder();
             StringBuilder sbSub = new StringBuilder();
             int subCount = 0;
@@ -3441,52 +3435,97 @@ namespace ASCompletion.Completion
             bool hadDot = ignoreWhiteSpace;
             int dotCount = 0;
             bool inRegex = false;
-            char dot = features.dot[features.dot.Length-1];
+            char dot = features.dot[features.dot.Length - 1];
             while (position > minPos)
             {
                 position--;
-                var style = sci.BaseStyleAt(position);
-                if (style == 14) // regex literal
+                if (context.CodeComplete.IsRegexStyle(sci, position))
                 {
-                    if (hadDot) inRegex = true;
-                    else break;
+                    inRegex = true;
+                    positionExpression = position;
+                    continue;
                 }
-                else if (!IsCommentStyle(style))
+                var style = sci.BaseStyleAt(position);
+                if (!IsCommentStyle(style))
                 {
-                    var c2 = c;
-                    c = (char)sci.CharAt(position);
                     // end of regex literal
                     if (inRegex)
                     {
                         inRegex = false;
-                        if (expression.SubExpressions == null) expression.SubExpressions = new List<string>();
-                        expression.SubExpressions.Add("");
-                        sb.Insert(0, "RegExp.#" + (subCount++) + "~");
+                        if (arrCount == 0 && braCount == 0 && parCount == 0)
+                        {
+                            if (expression.SubExpressions == null) expression.SubExpressions = new List<string>();
+                            expression.SubExpressions.Add("");
+                            sb.Insert(0, "#RegExp.#" + (subCount++) + "~");
+                            break;
+                        }
+                    }
+                    var c2 = c;
+                    c = (char)sci.CharAt(position);
+                    if ((dQuotes > 0 && c != '\"') || (sQuotes > 0 && c != '\''))
+                    {
+                        sbSub.Insert(0, c);
+                        continue;
                     }
                     // array access
-                    else if (c == ']') arrCount++;
-                    if (c == '[')
+                    if (c == ']')
+                    {
+                        arrCount++;
+                        ignoreWhiteSpace = false;
+                    }
+                    else if (c == '[')
                     {
                         arrCount--;
                         if (arrCount == 0 && braCount == 0)
                         {
+                            positionExpression = position;
                             if (sbSub.Length > 0) sbSub.Insert(0, '[');
-                            if (parCount == 0) sb.Insert(0, ".[]");
+                            if (parCount == 0)
+                            {
+                                sb.Insert(0, "." + sbSub);
+                                sbSub.Clear();
+                            }
                             continue;
                         }
                         if (arrCount < 0)
                         {
-                            expression.Separator = ';';
+                            expression.Separator = ";";
                             break;
                         }
                     }
-                    else if (c == '<' && hasGenerics)
+                    else if (c == '<' && hasGenerics && arrCount == 0 && parCount == 0)
                     {
                         genCount--;
                         if (genCount < 0)
                         {
-                            expression.Separator = ';';
+                            expression.Separator = ";";
                             break;
+                        }
+                    }
+                    else if (c == '>' && arrCount == 0 && parCount == 0)
+                    {
+                        if (haXe && position - 1 > minPos && (char)sci.CharAt(position - 1) == '-')
+                        {
+                        }
+                        else if (hasGenerics)
+                        {
+                            if (c2 == '.' || c2 == ',' || c2 == '(' || c2 == '[' || c2 == '>' || c2 == '}' || c2 == ')' || position + 1 == startPosition)
+                            {
+                                genCount++;
+                                var length = sb.Length;
+                                if (length >= 3)
+                                {
+                                    var fc = sb[0];
+                                    var sc = sb[1];
+                                    var lc = sb[length - 1];
+                                    if (fc == '.' && sc == '[' && (lc == ']' || (length >= 4 && sb[length - 2] == ']' && lc == '.')))
+                                    {
+                                        sbSub.Insert(0, sb.ToString(1, length - 1));
+                                        sb.Clear();
+                                    }
+                                }
+                            }
+                            else break;
                         }
                     }
                     // ignore sub-expressions (method calls' parameters)
@@ -3495,44 +3534,51 @@ namespace ASCompletion.Completion
                         parCount--;
                         if (parCount == 0 && arrCount == 0)
                         {
+                            positionExpression = position;
                             sbSub.Insert(0, c);
                             int testPos = position - 1;
                             string testWord = GetWordLeft(sci, ref testPos);
-                            if (haXe && testWord == "cast") expression.SubExpressions.Add(testWord);
                             expression.SubExpressions.Add(sbSub.ToString());
+                            sbSub.Clear();
                             sb.Insert(0, ".#" + (subCount++) + "~"); // method call or sub expression
-                            if (testWord == "return" || testWord == "case" || testWord == "default" || (haXe && testWord == "cast"))
+                            if (testWord == "return" || testWord == "case" || testWord == "default")
                             {
                                 // AS3, AS2, Loom ex: return (a as B).<complete>
-                                // Haxe ex: return cast(a, B).<complete>
-                                expression.Separator = ';';
+                                expression.Separator = ";";
                                 expression.WordBefore = testWord;
+                                expression.WordBeforePosition = testPos + 1;
                                 break;
                             }
                             continue;
                         }
                         if (parCount < 0)
                         {
-                            expression.Separator = ';';
+                            expression.Separator = ";";
                             int testPos = position - 1;
                             string testWord = GetWordLeft(sci, ref testPos); // anonymous function
-                            string testWord2 = GetWordLeft(sci, ref testPos) ?? "null"; // regular function
+                            var pos = testPos;
+                            string testWord2 = GetWordLeft(sci, ref pos) ?? "null"; // regular function
                             if (testWord == features.functionKey || testWord == "catch"
                                 || testWord2 == features.functionKey
                                 || testWord2 == features.getKey || testWord2 == features.setKey)
                             {
-                                expression.Separator = ',';
+                                expression.Separator = ",";
                                 expression.coma = ComaExpression.FunctionDeclaration;
                             }
-                            else expression.WordBefore = testWord;
+                            else
+                            {
+                                expression.WordBefore = testWord;
+                                expression.WordBeforePosition = testPos + 1;
+                            }
                             break;
                         }
                     }
                     else if (c == ')')
                     {
+                        ignoreWhiteSpace = false;
                         if (!hadDot)
                         {
-                            expression.Separator = ';';
+                            expression.Separator = ";";
                             break;
                         }
                         if (parCount == 0) // start sub-expression
@@ -3542,80 +3588,106 @@ namespace ASCompletion.Completion
                         }
                         parCount++;
                     }
-                    else if (c == '>')
-                    {
-                        if (haXe && position - 1 > minPos && (char) sci.CharAt(position - 1) == '-')
-                        {
-                        }
-                        else if (hasGenerics)
-                        {
-                            if (c2 == '.' || c2 == ',' || c2 == '(' || c2 == '[' || c2 == '>' || c2 == '}' || position + 1 == startPosition)
-                            {
-                                genCount++;
-                                if (sb.Length >= 3 && sb[0] == '.' && sb[1] == '[' && sb[2] == ']') sb.Remove(0, 3);
-                            }
-                            else break;
-                        }
-                    }
-                    else if (genCount == 0 && arrCount == 0)
+                    else if (genCount == 0 && arrCount == 0 && parCount == 0)
                     {
                         if (c == '}')
                         {
                             if (!ignoreWhiteSpace && hadWS)
                             {
-                                expression.Separator = ';';
+                                expression.Separator = ";";
                                 break;
                             }
                             braCount++;
                         }
-                        else if (c == '{' && braCount > 0)
+                        else if (c == '{')
                         {
                             braCount--;
                             if (braCount == 0)
                             {
+                                positionExpression = position;
                                 sb.Insert(0, "{}");
-                                expression.Separator = ';';
+                                expression.Separator = ";";
                                 continue;
                             }
-                        }
-                        else if (c == '\"' && sQuotes == 0)
-                        {
-                            if (position == 0 || (char)sci.CharAt(position - 1) == '\\') continue;
-                            if (dQuotes == 0) dQuotes++;
-                            else
+                            if (braCount < 0)
                             {
-                                dQuotes--;
-                                if (sQuotes == 0 && dQuotes == 0)
-                                {
-                                    sb.Insert(0, "\"\"");
-                                    expression.Separator = ';';
-                                    continue;
-                                }
+                                expression.Separator = ";";
+                                break;
                             }
-                            if (arrCount == 0 && parCount == 0) hadDot = false;
                         }
-                        else if (c == '\'' && dQuotes == 0)
+                        else if (braCount == 0)
                         {
-                            if (position == 0 || (char)sci.CharAt(position - 1) == '\\') continue;
-                            if (sQuotes == 0) sQuotes++;
-                            else
+                            if (c == '\"' && sQuotes == 0)
                             {
-                                sQuotes--;
-                                if (sQuotes == 0 && dQuotes == 0)
+                                if (position == 0 || (char)sci.CharAt(position - 1) == '\\') continue;
+                                if (dQuotes == 0) dQuotes++;
+                                else
                                 {
-                                    sb.Insert(0, "\"\"");
-                                    expression.Separator = ';';
-                                    continue;
+                                    dQuotes--;
+                                    if (dQuotes == 0)
+                                    {
+                                        positionExpression = position;
+                                        expression.Separator = ";";
+                                        if (expression.SubExpressions != null)
+                                        {
+                                            sbSub.Insert(0, c);
+                                            sb.Insert(0, sbSub.ToString());
+                                            break;
+                                        }
+                                        sb.Insert(0, string.Concat(c, sbSub, c));
+                                        continue;
+                                    }
                                 }
+                                if (hadDot && !ignoreWhiteSpace)
+                                {
+                                    sbSub.Clear();
+                                    sbSub.Insert(0, c);
+                                    if (expression.SubExpressions == null) expression.SubExpressions = new List<string>();
+                                    expression.SubExpressions.Add(string.Empty);
+                                    sb.Insert(0, ".#" + (subCount++) + "~");
+                                }
+                                ignoreWhiteSpace = false;
+                                continue;
                             }
-                            if (arrCount == 0 && parCount == 0) hadDot = false;
+                            if (c == '\'' && dQuotes == 0)
+                            {
+                                if (position == 0 || (char)sci.CharAt(position - 1) == '\\') continue;
+                                if (sQuotes == 0) sQuotes++;
+                                else
+                                {
+                                    sQuotes--;
+                                    if (sQuotes == 0)
+                                    {
+                                        positionExpression = position;
+                                        expression.Separator = ";";
+                                        if (expression.SubExpressions != null)
+                                        {
+                                            sbSub.Insert(0, c);
+                                            sb.Insert(0, sbSub.ToString());
+                                            break;
+                                        }
+                                        sb.Insert(0, string.Concat(c, sbSub, c));
+                                        continue;
+                                    }
+                                }
+                                if (hadDot && !ignoreWhiteSpace)
+                                {
+                                    sbSub.Clear();
+                                    sbSub.Insert(0, c);
+                                    if (expression.SubExpressions == null) expression.SubExpressions = new List<string>();
+                                    expression.SubExpressions.Add(string.Empty);
+                                    sb.Insert(0, ".#" + (subCount++) + "~");
+                                }
+                                ignoreWhiteSpace = false;
+                                continue;
+                            }
                         }
                     }
                     if (parCount > 0 || arrCount > 0 || genCount > 0 || braCount > 0 || dQuotes > 0 || sQuotes > 0) 
                     {
                         if (c == ';') // not expected: something's wrong
                         {
-                            expression.Separator = ';';
+                            expression.Separator = ";";
                             break;
                         }
                         // build sub expression
@@ -3629,7 +3701,8 @@ namespace ASCompletion.Completion
                         else
                         {
                             sb.Insert(sb.Length, sbSub.ToString().ToCharArray());
-                            expression.Separator = ' ';
+                            positionExpression = position + 1;
+                            expression.Separator = " ";
                             break;
                         }
                     }
@@ -3648,22 +3721,9 @@ namespace ASCompletion.Completion
                         }
                         sb.Insert(0, c);
                     }
-                    else if (characterClass.IndexOf(c) >= 0)
-                    {
-                        if (hadWS && !hadDot)
-                        {
-                            expression.Separator = ' ';
-                            break;
-                        }
-                        hadWS = false;
-                        hadDot = false;
-                        dotCount = 0;
-                        sb.Insert(0, c);
-                        positionExpression = position;
-                    }
                     else if (c == ';')
                     {
-                        expression.Separator = ';';
+                        if(expression.Separator == " ") expression.Separator = ";";
                         break;
                     }
                     else if (hasGenerics && c == '<')
@@ -3673,33 +3733,128 @@ namespace ASCompletion.Completion
                             && sci.ConfigurationLanguage == "as3"
                             && position > minPos && sci.CharAt(position - 1) != '.')
                         {
+                            positionExpression = position;
                             position--;
-                            expression.Separator = ' ';
+                            expression.Separator = " ";
                             break;
                     }
                         genCount--;
+                        if (subCount > 0 || genCount < 0)
+                        {
+                            sb.Insert(0, sbSub);
+                            sbSub.Clear();
+                        }
                     }
                     else if (c == '{')
                     {
                         expression.coma = DisambiguateComa(sci, position, minPos);
-                        expression.Separator = (expression.coma == ComaExpression.None) ? ';' : ',';
+                        if (expression.Separator == " ") expression.Separator = (expression.coma == ComaExpression.None) ? ";" : ",";
+                        if (expression.coma == ComaExpression.AnonymousObjectParam)
+                        {
+                            positionExpression = position;
+                            sb.Append(c);
+                            braCount++;
+                            position++;
+                            int endPos;
+                            if (expression.ContextFunction != null) endPos = sci.LineEndPosition(expression.ContextFunction.LineTo);
+                            else endPos = sci.LineEndPosition(expression.ContextMember.LineTo);
+                            while (position < endPos)
+                            {
+                                style = sci.BaseStyleAt(position);
+                                if (!IsCommentStyle(style))
+                                {
+                                    c = (char) sci.CharAt(position);
+                                    sb.Append(c);
+                                    if (c == '}')
+                                    {
+                                        if (--braCount == 0) break;
+                                    }
+                                    else if (c == '{') braCount++;
+                                }
+                                position++;
+                            }
+                        }
                         break;
                     }
                     else if (c == ',')
                     {
                         expression.coma = DisambiguateComa(sci, position, minPos);
-                        expression.Separator = (expression.coma == ComaExpression.None) ? ';' : ',';
+                        expression.Separator = (expression.coma == ComaExpression.None) ? ";" : ",";
                         break;
                     }
                     else if (c == ':')
                     {
-                        expression.Separator = ':';
+                        expression.Separator = ":";
                         break;
                     }
                     else if (c == '=')
                     {
-                        expression.Separator = '=';
+                        expression.Separator = "=";
                         break;
+                    }
+                    else if (features.ArithmeticOperators.Contains(c))
+                    {
+                        expression.SeparatorPosition = position;
+                        var p = position - 1;
+                        var curOp = c.ToString();
+                        foreach (var op in features.IncrementDecrementOperators)
+                        {
+                            while (op.StartsWithOrdinal(curOp) && p > minPos)
+                            {
+                                var cc = (char)sci.CharAt(p);
+                                if (cc == c) curOp += cc;
+                                else break;
+                                p--;
+                            }
+                            if (curOp.Length > 1)
+                            {
+                                var buf = string.Empty;
+                                while (p > minPos)
+                                {
+                                    if (sci.PositionIsOnComment(p))
+                                    {
+                                        p--;
+                                        continue;
+                                    }
+                                    var cc = (char)sci.CharAt(p--);
+                                    if (cc <= ' ') buf += cc;
+                                    else if (features.ArithmeticOperators.Contains(cc))
+                                    {
+                                        buf = cc + buf;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        buf = string.Empty;
+                                        break;
+                                    }
+                                }
+                                if (buf.Length > 0) curOp = buf + curOp;
+                                break;
+                            }
+                        }
+                        if (sb.Length != 0)
+                        {
+                            expression.Separator = curOp;
+                            expression.SeparatorPosition -= curOp.Length - 1;
+                            break;
+                        }
+                        position -= curOp.Length - 1;
+                        expression.RightOperator = curOp;
+                        hadDot = true;
+                    }
+                    else if (characterClass.Contains(c))
+                    {
+                        if (hadWS && !hadDot)
+                        {
+                            expression.Separator = " ";
+                            break;
+                        }
+                        hadWS = false;
+                        hadDot = false;
+                        dotCount = 0;
+                        sb.Insert(0, c);
+                        positionExpression = position;
                     }
                     else //if (hadWS && !hadDot)
                     {
@@ -3708,8 +3863,8 @@ namespace ASCompletion.Completion
                             sb.Insert(0, $".{c}");
                             continue;
                         }
-                        if (c == '\'' || c == '"') expression.Separator = '"';
-                        else expression.Separator = ';';
+                        if (c == '\'' || c == '"') expression.Separator = "\"";
+                        else expression.Separator = c.ToString();
                         break;
                     }
                 }
@@ -3718,27 +3873,26 @@ namespace ASCompletion.Completion
                 {
                     if (parCount == 0 && !hadDot) // not expected: something's wrong
                     {
-                        expression.Separator = ';';
+                        expression.Separator = ";";
                         break;
                     }
                 }
             }
 
             // check if there is a particular keyword
-            if (expression.Separator == ' ') expression.WordBefore = GetWordLeft(sci, ref position);
-
-            // result
-            var value = sb.ToString();
-            if (value.StartsWith('<'))
+            if (expression.Separator == " ")
             {
-                if (sci.ConfigurationLanguage == "as3" && expression.WordBefore == "new")
-                    value = Regex.Replace(value, @"\[.*", string.Empty);
-                else if (features.hasE4X && value.EndsWith('>'))
-                {
-                    expression.Separator = ';';
-                    value = "</>";
-                }
-            } 
+                expression.WordBefore = GetWordLeft(sci, ref position);
+                expression.WordBeforePosition = position + 1;
+            }
+
+            var value = sb.ToString().TrimStart('.');
+            if (features.hasE4X && value.Length >= 2 && value[0] == '<' && value[value.Length - 1]  == '>')
+            {
+                expression.Separator = ";";
+                value = "</>";
+            }
+
             expression.Value = value;
             expression.PositionExpression = positionExpression;
             LastExpression = expression;
@@ -3895,7 +4049,7 @@ namespace ASCompletion.Completion
             {
                 MemberModel cm = expression.ContextMember;
                 string functionBody = Regex.Replace(expression.FunctionBody, "function\\s*\\(", "function __anonfunc__("); // name anonymous functions
-                model = ASContext.Context.GetCodeModel(functionBody);
+                model = ASContext.Context.GetCodeModel(functionBody, true);
                 int memberCount = model.Members.Count;
                 for (int memberIndex = 0; memberIndex < memberCount; memberIndex++)
                 {
@@ -4018,6 +4172,8 @@ namespace ASCompletion.Completion
             return style == 1 || style == 2 || style == 3 /*comments*/
                 || style == 17 || style == 18 /*javadoc tags*/;
         }
+
+        public virtual bool IsRegexStyle(ScintillaControl sci, int position) => sci.BaseStyleAt(position) == 14;
 
         public static string GetWordLeft(ScintillaControl sci, ref int position)
         {
@@ -4385,55 +4541,21 @@ namespace ASCompletion.Completion
         }
 
         /// <summary>
-        /// Returns whether or not position is inside of an expression
-        /// block in Haxe String interpolation ('${expr}')
+        /// Returns whether or not position is inside of an expression block in String interpolation
+        /// <param name="sci">Scintilla Control</param>
+        /// <param name="position">Cursor position</param>
         /// </summary>
-        private static bool IsInterpolationExpr(ScintillaControl sci, int position)
+        public virtual bool IsStringInterpolationStyle(ScintillaControl sci, int position) => false;
+
+        protected bool IsEscapedCharacter(ScintillaControl sci, int position, char escapeChar = '\\')
         {
-            if (ASContext.Context.Features.hasStringInterpolation)
-            {
-                char stringChar = sci.GetStringType(position - 1);
-                if (ASContext.Context.Features.stringInterpolationQuotes.IndexOf(stringChar) >= 0)
-                {
-                    char next;
-                    char current = (char) sci.CharAt(position);
-
-                    for (int i = position - 1; i >= 0; i--)
-            {
-                        next = current;
-                        current = (char) sci.CharAt(i);
-
-                        if (current == stringChar)
-                        {
-                            if (!IsEscapedCharacter(sci, i)) break;
-            }
-                        else if (current == '$')
-                        {
-                            if (next == '{' && !IsEscapedCharacter(sci, i, '$')) return true;
-                        }
-                        else if (current == '}')
-                        {
-                            i = sci.BraceMatch(i);
-                            current = (char) sci.CharAt(i);
-                            if (i > 0 && current == '{' && sci.CharAt(i - 1) == '$') break;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-
-        private static bool IsEscapedCharacter(ScintillaControl sci, int position, char escapeChar = '\\')
-        {
-            bool escaped = false;
-
+            bool result = false;
             for (int i = position - 1; i >= 0; i--)
             {
                 if (sci.CharAt(i) != escapeChar) break;
-                escaped = !escaped;
+                result = !result;
             }
-
-            return escaped;
+            return result;
         }
 
         private static bool IsMatchingQuote(char quote, int style)
@@ -4473,6 +4595,94 @@ namespace ASCompletion.Completion
         {
             return model != null
                 && (model.QualifiedName == "XML" || model.QualifiedName == "XMLList");
+        }
+
+        public static int ExpressionEndPosition(ScintillaControl sci, int position)
+        {
+            var member = ASContext.Context.CurrentMember;
+            var endPosition = member != null ? sci.LineEndPosition(member.LineTo) : sci.TextLength;
+            return ExpressionEndPosition(sci, position, endPosition);
+        }
+
+        public static int ExpressionEndPosition(ScintillaControl sci, int startPos, int endPos)
+        {
+            var result = startPos;
+            var statementEnd = startPos;
+            var characterClass = ScintillaControl.Configuration.GetLanguage(sci.ConfigurationLanguage).characterclass.Characters;
+            var parCount = 0;
+            var brCount = 0;
+            var arrCount = 0;
+            var hadWS = false;
+            sci.Colourise(0, -1);
+            while (statementEnd < endPos)
+            {
+                if (sci.PositionIsOnComment(statementEnd))
+                {
+                    statementEnd++;
+                    continue;
+                }
+                if (sci.PositionIsInString(statementEnd))
+                {
+                    statementEnd++;
+                    result = statementEnd;
+                    continue;
+                }
+                var c = (char) sci.CharAt(statementEnd++);
+                if (c == '(') parCount++;
+                else if (c == ')')
+                {
+                    parCount--;
+                    if (parCount == 0) result = statementEnd;
+                    if (parCount < 0) break;
+                }
+                else if (c == '{' && parCount == 0) brCount++;
+                else if (c == '}' && parCount == 0)
+                {
+                    brCount--;
+                    if (brCount == 0) result = statementEnd;
+                    if (brCount < 0) break;
+                }
+                else if (c == '[' && parCount == 0) arrCount++;
+                else if (c == ']' && parCount == 0)
+                {
+                    arrCount--;
+                    if (arrCount == 0) result = statementEnd;
+                    if (arrCount < 0) break;
+                }
+                else if (c == ';')
+                {
+                    if (brCount == 0) break;
+                }
+                else if (parCount == 0 && arrCount == 0 && brCount == 0)
+                {
+                    if (characterClass.Contains(c))
+                    {
+                        if (hadWS) break;
+                        result = statementEnd;
+                    }
+                    else if (c <= ' ') hadWS = true;
+                    else break;
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns true if position is before body of class or member
+        /// </summary>
+        public bool PositionIsBeforeBody(ScintillaControl sci, int position, MemberModel member)
+        {
+            var groupCount = 0;
+            var positionFrom = sci.PositionFromLine(member.LineFrom);
+            for (var i = positionFrom; i < position; i++)
+            {
+                if (sci.PositionIsOnComment(position)) continue;
+                var c = (char)sci.CharAt(i);
+                if (c == '(' || c == '<') groupCount++;
+                else if (c == ')' || (c == '>' && sci.CharAt(i - 1) != '-')) groupCount--;
+                else if (c == '{' && groupCount == 0) return false;
+            }
+            return true;
         }
 
         #endregion
@@ -4536,6 +4746,11 @@ namespace ASCompletion.Completion
             }
             else if (result.Type != null)
             {
+                if (result.Context.WordBefore == "new")
+                {
+                    var member = result.Type.Members.Search(result.Type.Name, FlagType.Constructor, 0);
+                    if (member != null) return MemberTooltipText(member, result.Type) + GetToolTipDoc(member);
+                }
                 return ClassModel.ClassDeclaration(result.Type) + GetToolTipDoc(result.Type);
             }
             else return null;
@@ -4610,14 +4825,15 @@ namespace ASCompletion.Completion
         #endregion
 
         #region automatic code generation
-        static private ASExpr LastExpression;
+
+        private static ASExpr LastExpression;
 
         /// <summary>
         /// When typing a fully qualified class name:
         /// - automatically insert import statement 
         /// - replace with short name
         /// </summary>
-        static internal void HandleCompletionInsert(ScintillaControl sci, int position, string text, char trigger, ICompletionListItem item)
+        internal static void HandleCompletionInsert(ScintillaControl sci, int position, string text, char trigger, ICompletionListItem item)
         {
             // if the current class hash was set, we want to store whatever the user selected as the last-completed member for this class.
             if (currentClassHash != null)
@@ -4715,7 +4931,7 @@ namespace ASCompletion.Completion
                 || (context.Type.Type != null && context.Type.Type.IndexOfOrdinal(features.dot) < 0)
                 || context.Type.IsVoid())
             {
-                if (context.Member != null && expr.Separator == ' '
+                if (context.Member != null && expr.Separator == " "
                     && expr.WordBefore == features.overrideKey)
                 {
                     ASGenerator.GenerateOverride(sci, context.InClass, context.Member, position);
@@ -4749,7 +4965,7 @@ namespace ASCompletion.Completion
             if (inFile == null || import == null)
                 return false;
 
-            if (expr.Separator == ' ' && !string.IsNullOrEmpty(expr.WordBefore))
+            if (expr.Separator == " " && !string.IsNullOrEmpty(expr.WordBefore))
             {
                 if (expr.WordBefore == features.importKey || expr.WordBefore == features.importKeyAlt
                     /*|| (!features.HasTypePreKey(expr.WordBefore) && expr.WordBefore != "case" && expr.WordBefore != "return")*/)
@@ -4763,19 +4979,19 @@ namespace ASCompletion.Completion
             int startPos = expr.PositionExpression;
             int endPos = sci.CurrentPos;
 
-            if (ASContext.Context.Settings.GenerateImports && shouldShortenType(sci, position, import, cFile, ref offset))
+            if (ASContext.Context.Settings.GenerateImports && ShouldShortenType(sci, position, import, cFile, ref offset))
             {
                 // insert short name
                 startPos += offset;
                 endPos += offset;
                 sci.SetSel(startPos, endPos);
-                sci.ReplaceSel(checkShortName(import.Name));
+                sci.ReplaceSel(CheckShortName(import.Name));
                 sci.SetSel(sci.CurrentPos, sci.CurrentPos);
             }            
             return true;
         }
 
-        private static bool shouldShortenType(ScintillaControl sci, int position, MemberModel import, FileModel cFile, ref int offset)
+        private static bool ShouldShortenType(ScintillaControl sci, int position, MemberModel import, FileModel cFile, ref int offset)
         {
             // check if in the same file or package
             /*if (cFile == inFile || features.hasPackages && cFile.Package == inFile.Package)
@@ -4823,7 +5039,7 @@ namespace ASCompletion.Completion
             return false;
         }
 
-        private static string checkShortName(string name)
+        private static string CheckShortName(string name)
         {
             int p = name.IndexOf('<');
             if (p > 1 && name[p - 1] == '.') p--;
@@ -4880,7 +5096,7 @@ namespace ASCompletion.Completion
         {
             // validate context
             var context = ASContext.Context;
-            if (expr.Separator == ' ' && expr.WordBefore != null
+            if (expr.Separator == " " && expr.WordBefore != null
                 && context.Features.HasTypePreKey(expr.WordBefore))
                 return false;
 
@@ -4956,7 +5172,7 @@ namespace ASCompletion.Completion
         {
             get
             {
-                return ASDocumentation.EscapeComment(ClassModel.MemberDeclaration(member)) + ASDocumentation.GetTipDetails(member, null); 
+                return ASDocumentation.EscapeComment(ClassModel.MemberDeclaration(member)) + ASDocumentation.GetTipDetails(member, null);
             }
         }
 
@@ -5169,7 +5385,7 @@ namespace ASCompletion.Completion
     /// <summary>
     /// Parsed expression with it's function context
     /// </summary>
-    sealed public class ASExpr
+    public sealed class ASExpr
     {
         public int Position;
         public MemberModel ContextMember;
@@ -5179,12 +5395,18 @@ namespace ASCompletion.Completion
         public int FunctionOffset;
         public bool BeforeBody;
 
+        /// <summary>
+        /// Start position of expression
+        /// </summary>
         public int PositionExpression;
         public string Value;
         public List<string> SubExpressions;
-        public char Separator;
+        public string Separator;
+        public int SeparatorPosition;
         public string WordBefore;
+        public int WordBeforePosition;
         public ComaExpression coma;
+        public string RightOperator = string.Empty;
 
         public ASExpr() { }
 
@@ -5200,7 +5422,7 @@ namespace ASCompletion.Completion
     /// <summary>
     /// Expressions/tokens evaluation result
     /// </summary>
-    sealed public class ASResult
+    public sealed class ASResult
     {
         public ClassModel Type;
         public ClassModel InClass;

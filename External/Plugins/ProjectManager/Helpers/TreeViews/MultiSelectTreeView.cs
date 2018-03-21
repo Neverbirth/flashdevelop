@@ -1,8 +1,5 @@
-using System;
 using System.Collections;
 using System.Drawing;
-using System.Diagnostics;
-using System.Windows.Forms;
 
 namespace System.Windows.Forms
 {
@@ -12,7 +9,7 @@ namespace System.Windows.Forms
     ///
     /// This was challenging!  -nick
     /// </summary>
-    public class MultiSelectTreeView : TreeView
+    public class MultiSelectTreeView : TreeViewEx
     {
         bool multiSelect;
         bool ignoreNextMultiSelect;

@@ -145,7 +145,8 @@ namespace PluginCore.Controls
                     return;
 
                 case EventType.Command:
-                    string cmd = (e as DataEvent).Action;
+                    string cmd = ((DataEvent)e).Action;
+                    // EventType.Command handlind should quite probably disappear when merging the "Decoupled CompletionList". This is too hacky and error-prone...
                     if (cmd.IndexOfOrdinal("ProjectManager") > 0
                         || cmd.IndexOfOrdinal("Changed") > 0
                         || cmd.IndexOfOrdinal("Context") > 0
@@ -154,8 +155,12 @@ namespace PluginCore.Controls
                         || cmd.IndexOfOrdinal("Get") > 0
                         || cmd.IndexOfOrdinal("Set") > 0
                         || cmd.IndexOfOrdinal("SDK") > 0
+                        || cmd == "ASCompletion.FileModelUpdated"
+                        || cmd == "ASCompletion.PathExplorerFinished"
+                        || cmd == "ASCompletion.ContextualGenerator.AddOptions"
+                        || cmd == "ASCompletion.DotCompletion"
                         || cmd == "ResultsPanel.ClearResults"
-                        || cmd == "LintingManager.FilesLinted")
+                        || cmd.IndexOfOrdinal("LintingManager.") == 0)
                         return; // ignore notifications
                     break;
             }
@@ -194,12 +199,12 @@ namespace PluginCore.Controls
             {
                 // check mouse over the editor
                 if ((position < 0) || simpleTip.Visible || errorTip.Visible || CompletionList.HasMouseIn) return;
-                Point mousePos = (PluginBase.MainForm as Form).PointToClient(Cursor.Position);
+                Point mousePos = Cursor.Position;//(PluginBase.MainForm as Form).PointToClient(Cursor.Position);
                 if (mousePos.X == lastMousePos.X && mousePos.Y == lastMousePos.Y)
                     return;
 
                 lastMousePos = mousePos;
-                Rectangle bounds = GetWindowBounds(sci);
+                Rectangle bounds = sci.RectangleToScreen(sci.Bounds);
                 if (!bounds.Contains(mousePos)) return;
 
                 // check no panel is over the editor
@@ -331,8 +336,8 @@ namespace PluginCore.Controls
             CompletionList.Hide();
             codeTip.Hide();
             callTip.Hide();
-            simpleTip.Hide();
-            errorTip.Hide();
+            //simpleTip.Hide();
+            //errorTip.Hide();
         }
         
         private void OnTextInserted(ScintillaControl sci, int position, int length, int linesAdded)

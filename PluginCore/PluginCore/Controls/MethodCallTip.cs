@@ -129,9 +129,9 @@ namespace PluginCore.Controls
             {
                 host.Left = screen.WorkingArea.Right - host.Width;
             }
-            if (host.Left < 0)
+            if (host.Left < screen.WorkingArea.Left)
             {
-                host.Left = 0;
+                host.Left = screen.WorkingArea.Left;
             }
         }
 

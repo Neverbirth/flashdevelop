@@ -3,10 +3,7 @@
 using System;
 using System.IO;
 using System.Xml;
-using System.Text;
 using System.Drawing;
-using System.Xml.XPath;
-using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -587,8 +584,8 @@ namespace AirProperties
                 if (icon.MinVersion <= PropertyManager.MajorVersion)
                 {
                     Label appIconLabel = new Label();
-                    TextBox appIconField = new TextBox();
-                    Button appIconButton = new Button();
+                    TextBox appIconField = new TextBoxEx();
+                    Button appIconButton = new ButtonEx();
 
                     icon.Field = appIconField;
 

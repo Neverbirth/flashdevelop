@@ -8,7 +8,6 @@ using System.Linq;
 using WeifenLuo.WinFormsUI.Docking;
 using PluginCore.Localization;
 using FlashDevelop.Managers;
-using FlashDevelop.Helpers;
 using FlashDevelop.Controls;
 using PluginCore.Utilities;
 using PluginCore.Managers;
@@ -16,6 +15,7 @@ using PluginCore.Helpers;
 using PluginCore.Controls;
 using ScintillaNet;
 using PluginCore;
+using FlashDevelop.Helpers;
 
 namespace FlashDevelop.Docking
 {
@@ -206,14 +206,7 @@ namespace FlashDevelop.Docking
         /// <summary>
         /// Do we contain a ScintillaControl?
         /// </summary>
-        public Boolean IsEditable
-        {
-            get
-            {
-                if (this.SciControl == null) return false;
-                else return true;
-            }
-        }
+        public Boolean IsEditable => this.SciControl != null;
 
         /// <summary>
         /// Are we splitted in to two sci controls?
@@ -239,10 +232,7 @@ namespace FlashDevelop.Docking
         /// <summary>
         /// Does this document have any bookmarks?
         /// </summary>
-        public Boolean HasBookmarks
-        {
-            get { return bookmarks.Count > 0; }
-        }
+        public Boolean HasBookmarks => bookmarks.Count > 0;
 
         /// <summary>
         /// Does this document's pane have any other documents?
@@ -254,8 +244,7 @@ namespace FlashDevelop.Docking
                 int count = 0;
                 foreach (ITabbedDocument document in Globals.MainForm.Documents)
                 {
-                    if (document.DockHandler.PanelPane == DockHandler.PanelPane)
-                        count++;
+                    if (document.DockHandler.PanelPane == DockHandler.PanelPane) count++;
                 }
                 return count <= 1;
             }
@@ -270,8 +259,8 @@ namespace FlashDevelop.Docking
             {
                 foreach (Control ctrl in this.Controls)
                 {
-                    if (ctrl is ScintillaControl && !this.Disposing) return ctrl as ScintillaControl;
-                    else if (ctrl is SplitContainer && ctrl.Name == "fdSplitView" && !this.Disposing)
+                    if (ctrl is ScintillaControl && !this.Disposing && !this.IsDisposed) return ctrl as ScintillaControl;
+                    else if (ctrl is SplitContainer && ctrl.Name == "fdSplitView" && !this.Disposing && !this.IsDisposed)
                     {
                         SplitContainer casted = ctrl as SplitContainer;
                         ScintillaControl sci1 = casted.Panel1.Controls[0] as ScintillaControl;
@@ -292,39 +281,18 @@ namespace FlashDevelop.Docking
         /// <summary>
         /// First splitted ScintillaControl 
         /// </summary>
-        public ScintillaControl SplitSci1
-        {
-            get
-            {
-                if (this.editor != null) return this.editor;
-                else return null;
-            }
-        }
+        public ScintillaControl SplitSci1 => editor;
 
         /// <summary>
         /// Second splitted ScintillaControl
         /// </summary>
-        public ScintillaControl SplitSci2
-        {
-            get
-            {
-                if (this.editor2 != null) return this.editor2;
-                else return null;
-            }
-        }
+        public ScintillaControl SplitSci2 => editor2;
 
         /// <summary>
         /// SplitContainer of the document
         /// </summary>
-        public SplitContainer SplitContainer
-        {
-            get
-            {
-                if (this.splitContainer != null) return this.splitContainer;
-                else return null;
-            }
-        }
-            
+        public SplitContainer SplitContainer => splitContainer;
+
         /// <summary>
         /// Gets if the file is untitled
         /// </summary>
@@ -529,8 +497,11 @@ namespace FlashDevelop.Docking
             EventManager.DispatchEvent(this, saving);
             if (!saving.Handled)
             {
-                this.UpdateDocumentIcon(file);
-                this.SciControl.FileName = file;
+                if (otherFile)
+                {
+                    this.UpdateDocumentIcon(file);
+                    this.SciControl.FileName = file;
+                }
                 ScintillaManager.CleanUpCode(this.SciControl);
                 DataEvent de = new DataEvent(EventType.FileEncode, file, this.SciControl.Text);
                 EventManager.DispatchEvent(this, de); // Lets ask if a plugin wants to encode and save the data..
@@ -592,7 +563,6 @@ namespace FlashDevelop.Docking
                 this.SciControl.IsReadOnly = FileHelper.FileIsReadOnly(this.FileName);
                 this.SciControl.SetSel(position, position);
                 this.SciControl.EmptyUndoBuffer();
-
                 int lineCount = SciControl.LineCount;
                 foreach (var lineNum in this.bookmarks)
                 {
@@ -600,13 +570,13 @@ namespace FlashDevelop.Docking
                     if (lineNum >= lineCount)
                     {
                         if (!MarkerManager.HasMarker(SciControl, 0, lineCount - 1))
+                        {
                             MarkerManager.ToggleMarker(SciControl, 0, lineCount - 1);
+                        }
                     }
                     else MarkerManager.ToggleMarker(SciControl, 0, lineNum);
                 }
-
                 this.InitBookmarks();
-
                 this.fileInfo = new FileInfo(this.FileName);
             }
             Globals.MainForm.OnDocumentReload(this);

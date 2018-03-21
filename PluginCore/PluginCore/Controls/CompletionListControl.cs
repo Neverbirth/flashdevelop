@@ -308,7 +308,7 @@ namespace PluginCore.Controls
                     completionList.SelectedItem = item;
                     return;
                 }
-                if (pname != null && item.Label.EndsWith(pname)) found = item;
+                if (pname != null && item.Label.EndsWithOrdinal(pname)) found = item;
             }
             if (found != null)
             {

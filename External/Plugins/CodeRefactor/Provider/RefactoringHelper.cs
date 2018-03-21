@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using PluginCore.FRService;
 using PluginCore.Helpers;
 using PluginCore.Managers;
 using PluginCore.Utilities;
+using ProjectManager;
 using ProjectManager.Projects;
 using ScintillaNet;
 
@@ -105,7 +107,7 @@ namespace CodeRefactor.Provider
         {
             var type = target.Type;
             var member = target.Member;
-            if (type.IsEnum() || !type.IsVoid() && target.IsStatic && (member == null || (member.Flags & FlagType.Constructor) > 0))
+            if ((type.IsEnum() && member == null) || (!type.IsVoid() && (member == null || (member.Flags & FlagType.Constructor) > 0)))
                 return type;
             return member;
         }
@@ -285,8 +287,8 @@ namespace CodeRefactor.Provider
             else if (target.Member != null && target.InClass == null)
                 targetInFile = target.Member.InFile;
 
-            Boolean matchMember = targetInFile != null && target.Member != null;
-            Boolean matchType = target.Member == null && target.IsStatic && target.Type != null;
+            var matchMember = targetInFile != null && target.Member != null;
+            var matchType = target.Member == null && target.Type != null;
             if (!matchMember && !matchType) return false;
 
             ASResult result = null;
@@ -507,7 +509,7 @@ namespace CodeRefactor.Provider
         /// Generates an FRSearch to find all instances of the given member name.
         /// Enables WholeWord and Match Case. No comment/string literal, escape characters, or regex searching.
         /// </summary>
-        private static FRSearch GetFRSearch(string memberName, bool includeComments, bool includeStrings)
+        internal static FRSearch GetFRSearch(string memberName, bool includeComments, bool includeStrings)
         {
             FRSearch search = new FRSearch(memberName);
             search.IsRegex = false;
@@ -631,6 +633,10 @@ namespace CodeRefactor.Provider
         }
         public static void Move(string oldPath, string newPath, bool renaming)
         {
+            Move(oldPath, newPath, renaming, oldPath);
+        }
+        public static void Move(string oldPath, string newPath, bool renaming, string originalOld)
+        {
             if (string.IsNullOrEmpty(oldPath) || string.IsNullOrEmpty(newPath)) return;
             Project project = (Project)PluginBase.CurrentProject;
             string newDocumentClass = null;
@@ -639,6 +645,8 @@ namespace CodeRefactor.Provider
             {
                 FileHelper.ForceMove(oldPath, newPath);
                 DocumentManager.MoveDocuments(oldPath, newPath);
+                RaiseMoveEvent(originalOld, newPath);
+
                 if (project.IsDocumentClass(oldPath)) newDocumentClass = newPath;
             }
             else if (Directory.Exists(oldPath))
@@ -661,6 +669,7 @@ namespace CodeRefactor.Provider
                 // We need to use our own method for moving directories if folders in the new path already exist
                 FileHelper.ForceMoveDirectory(oldPath, newPath);
                 DocumentManager.MoveDocuments(oldPath, newPath);
+                RaiseMoveEvent(originalOld, newPath);
             }
             if (!string.IsNullOrEmpty(newDocumentClass))
             {
@@ -700,6 +709,27 @@ namespace CodeRefactor.Provider
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        internal static void RaiseMoveEvent(string fromPath, string toPath)
+        {
+            if (Directory.Exists(toPath))
+            {
+                foreach (var file in Directory.EnumerateFiles(toPath))
+                    RaiseMoveEvent(Path.Combine(fromPath, file), Path.Combine(toPath, file));
+                foreach (var folder in Directory.EnumerateDirectories(toPath))
+                    RaiseMoveEvent(Path.Combine(fromPath, folder), Path.Combine(toPath, folder));
+            }
+            else if (File.Exists(toPath))
+            {
+                var data = new Hashtable
+                {
+                    ["fromPath"] = fromPath,
+                    ["toPath"] = toPath
+                };
+                var de = new DataEvent(EventType.Command, ProjectManagerEvents.FileMoved, data);
+                EventManager.DispatchEvent(null, de);
             }
         }
 

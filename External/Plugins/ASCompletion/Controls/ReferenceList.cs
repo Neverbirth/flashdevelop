@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Timers;
 using System.Windows.Forms;
+using ASCompletion.Completion;
 using ASCompletion.Model;
 using PluginCore;
 using PluginCore.Localization;
@@ -98,6 +99,16 @@ namespace ASCompletion.Controls
             });
         }
 
+        internal static IEnumerable<Reference> ConvertClassCache(IEnumerable<ClassModel> list)
+        {
+            return list.Select(m => new Reference
+            {
+                File = m.InFile.FileName,
+                Line = m.LineFrom,
+                Type = m.QualifiedName
+            });
+        }
+
         #region Event Listeners
 
         static void ListView_LostFocus(object sender, EventArgs e)
@@ -140,6 +151,8 @@ namespace ASCompletion.Controls
             var reference = (Reference)selection.Tag;
 
             HideList();
+            if (PluginBase.MainForm.CurrentDocument.SciControl != null)
+                ASComplete.SaveLastLookupPosition(PluginBase.MainForm.CurrentDocument.SciControl);
             PluginBase.MainForm.OpenEditableDocument(reference.File, false);
             PluginBase.MainForm.CurrentDocument.SciControl.GotoLine(reference.Line);
         }

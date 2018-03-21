@@ -1,6 +1,4 @@
 using System;
-using System.Text;
-using System.Media;
 using System.Drawing;
 using System.Collections;
 using System.Windows.Forms;
@@ -13,7 +11,6 @@ using FlashDevelop.Helpers;
 using FlashDevelop.Docking;
 using PluginCore.FRService;
 using PluginCore.Managers;
-using PluginCore.Utilities;
 using PluginCore.Controls;
 using PluginCore.Helpers;
 using ScintillaNet.Configuration;
@@ -41,7 +38,6 @@ namespace FlashDevelop.Controls
         private ToolStripLabel findLabel;
         private ToolStripLabel infoLabel;
         private Timer typingTimer;
-        private DockPanel dockPanel;
 
         private IEditorController ownerController;
 
@@ -75,7 +71,7 @@ namespace FlashDevelop.Controls
         /// </summary>
         private void InitializeEvents()
         {
-            EventManager.AddEventHandler(this, EventType.FileSwitch);
+            EventManager.AddEventHandler(this, EventType.FileSwitch | EventType.ApplyTheme);
             PluginBase.MainForm.DockPanel.ActivePaneChanged += OnActivePaneChanged;
         }
 
@@ -84,7 +80,14 @@ namespace FlashDevelop.Controls
         /// </summary>
         public void HandleEvent(Object sender, NotifyEvent e, HandlingPriority priority)
         {
-            this.ApplyFixedDocumentPadding();
+            if (e.Type == EventType.FileSwitch)
+            {
+                this.ApplyFixedDocumentPadding();
+            }
+            else if (e.Type == EventType.ApplyTheme)
+            {
+                this.InitializeGraphics();
+            }
         }
 
         /// <summary>
@@ -103,9 +106,9 @@ namespace FlashDevelop.Controls
         {
             this.ImageScalingSize = ScaleHelper.Scale(new Size(16, 16));
             this.highlightTimer = new Timer();
-            this.wholeWordCheckBox = new CheckBox();
-            this.matchCaseCheckBox = new CheckBox();
-            this.highlightCheckBox = new CheckBox();
+            this.wholeWordCheckBox = new CheckBoxEx();
+            this.matchCaseCheckBox = new CheckBoxEx();
+            this.highlightCheckBox = new CheckBoxEx();
             this.nextButton = new ToolStripButton();
             this.closeButton = new ToolStripButton();
             this.moreButton = new ToolStripButton();
@@ -255,6 +258,7 @@ namespace FlashDevelop.Controls
             Color text = Globals.MainForm.GetThemeColor("QuickFind.ForeColor");
             Color fore = Globals.MainForm.GetThemeColor("ToolStripTextBoxControl.ForeColor");
             Color back = Globals.MainForm.GetThemeColor("ToolStripTextBoxControl.BackColor");
+            Boolean useTheme = Globals.MainForm.GetThemeColor("QuickFind.BackColor") != Color.Empty;
             if (back != Color.Empty) this.backColor = this.findTextBox.BackColor = back;
             if (text != Color.Empty) this.infoLabel.ForeColor = text;
             if (fore != Color.Empty) this.findTextBox.ForeColor = fore;
@@ -264,6 +268,14 @@ namespace FlashDevelop.Controls
                 this.previousButton.Image = Globals.MainForm.FindImage("63");
                 this.closeButton.Image = Globals.MainForm.FindImage("111");
             }
+            Padding pad = new Padding(0, 2, 6, useTheme ? 3 : 1);
+            this.highlightHost.Margin = this.matchCaseHost.Margin = this.wholeWordHost.Margin = pad;
+            PluginBase.MainForm.SetUseTheme(this.highlightCheckBox, useTheme);
+            PluginBase.MainForm.SetUseTheme(this.matchCaseCheckBox, useTheme);
+            PluginBase.MainForm.SetUseTheme(this.wholeWordCheckBox, useTheme);
+            PluginBase.MainForm.ThemeControls(this.highlightCheckBox);
+            PluginBase.MainForm.ThemeControls(this.matchCaseCheckBox);
+            PluginBase.MainForm.ThemeControls(this.wholeWordCheckBox);
         }
 
         /// <summary>

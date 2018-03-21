@@ -131,7 +131,9 @@ namespace AS3Context
             features.privateKey = "private";
             features.intrinsicKey = "extern";
             features.namespaceKey = "namespace";
-
+            features.ArithmeticOperators = new HashSet<char>{'+', '-', '*', '/', '%'};
+            features.IncrementDecrementOperators = new[] {"++", "--"};
+            features.OtherOperators = new HashSet<string> {"delete", "typeof", "new"};
             /* INITIALIZATION */
 
             settings = initSettings;
@@ -803,44 +805,33 @@ namespace AS3Context
             if (text == "Vector")
             {
                 string insert = null;
-                string line = sci.GetLine(sci.LineFromPosition(position));
-                Match m = Regex.Match(line, @"\svar\s+(?<varname>.+)\s*:\s*Vector\.<(?<indextype>.+)(?=(>\s*=))");
+                var line = sci.GetLine(sci.LineFromPosition(position));
+                var m = Regex.Match(line, @"\s*=\s*new");
                 if (m.Success)
                 {
-                    insert = String.Format(".<{0}>", m.Groups["indextype"].Value);
+                    var result = ASComplete.GetExpressionType(sci, sci.PositionFromLine(sci.LineFromPosition(position)) + m.Index);
+                    if (result != null && !result.IsNull() && result.Member?.Type != null)
+                    {
+                        m = Regex.Match(result.Member.Type, @"(?<=<).+(?=>)");
+                        if (m.Success) insert = $".<{m.Value}>";
+                    }
                 }
-                else
+                if (insert == null)
                 {
-                    m = Regex.Match(line, @"\s*=\s*new");
-                    if (m.Success)
-                    {
-                        ASResult result = ASComplete.GetExpressionType(sci, sci.PositionFromLine(sci.LineFromPosition(position)) + m.Index);
-                        if (result != null && !result.IsNull() && result.Member != null && result.Member.Type != null)
-                        {
-                            m = Regex.Match(result.Member.Type, @"(?<=<).+(?=>)");
-                            if (m.Success)
-                            {
-                                insert = String.Format(".<{0}>", m.Value);
-                            }
-                        }
-                    }
-                    if (insert == null)
-                    {
-                        if (trigger == '.' || trigger == '(') return true;
-                        insert = ".<>";
-                        sci.InsertText(position + text.Length, insert);
-                        sci.CurrentPos = position + text.Length + 2;
-                        sci.SetSel(sci.CurrentPos, sci.CurrentPos);
-                        ASComplete.HandleAllClassesCompletion(sci, "", false, true);
-                        return true;
-                    }
+                    if (trigger == '.' || trigger == '(') return true;
+                    insert = ".<>";
+                    sci.InsertText(position + text.Length, insert);
+                    sci.CurrentPos = position + text.Length + 2;
+                    sci.SetSel(sci.CurrentPos, sci.CurrentPos);
+                    ASComplete.HandleAllClassesCompletion(sci, "", false, true);
+                    return true;
                 }
                 if (trigger == '.')
                 {
                     sci.InsertText(position + text.Length, insert.Substring(1));
                     sci.CurrentPos = position + text.Length;
                 }
-                else 
+                else
                 {
                     sci.InsertText(position + text.Length, insert);
                     sci.CurrentPos = position + text.Length + insert.Length;
@@ -848,8 +839,7 @@ namespace AS3Context
                 sci.SetSel(sci.CurrentPos, sci.CurrentPos);
                 return true;
             }
-
-            return false;
+            return text.StartsWithOrdinal("Vector.<");
         }
 
         /// <summary>
@@ -861,6 +851,7 @@ namespace AS3Context
         /// <param name="atLine">Position in the file</param>
         public override bool IsImported(MemberModel member, int atLine)
         {
+            if (member == ClassModel.VoidClass) return false;
             FileModel cFile = Context.CurrentModel;
             // same package is auto-imported
             string package = member.Type.Length > member.Name.Length 
@@ -879,20 +870,71 @@ namespace AS3Context
         public override ClassModel ResolveType(string cname, FileModel inFile)
         {
             // handle generic types
-            if (cname != null && cname.IndexOf('<') >= 0)
+            if (cname != null)
             {
-                if (cname.StartsWith('<'))
+                var index = cname.IndexOf('<');
+                if (index != -1)
                 {
-                    //transform <T>[] to Vector.<T>
-                    cname = Regex.Replace(cname, @">\[.*", ">");
-                    cname = "Vector." + cname;
+                    if (index == 0)
+                    {
+                        //transform <T>[] to Vector.<T>
+                        cname = Regex.Replace(cname, @">\[.*", ">");
+                        cname = "Vector." + cname;
+                    }
+                    Match genType = re_genericType.Match(cname);
+                    if (genType.Success) return ResolveGenericType(genType.Groups["gen"].Value, genType.Groups["type"].Value, inFile);
+                    return ClassModel.VoidClass;
                 }
-                Match genType = re_genericType.Match(cname);
-                if (genType.Success)
-                    return ResolveGenericType(genType.Groups["gen"].Value, genType.Groups["type"].Value, inFile);
-                else return ClassModel.VoidClass;
             }
             return base.ResolveType(cname, inFile);
+        }
+
+        public override ClassModel ResolveToken(string token, FileModel inFile)
+        {
+            var tokenLength = token != null ? token.Length : 0;
+            if (tokenLength > 0)
+            {
+                if (token == "#RegExp") return ResolveType("RegExp", inFile);
+                if (token.StartsWithOrdinal("0x")) return ResolveType("uint", inFile);
+                var first = token[0];
+                if (first == '<' && tokenLength >= 3 && token[tokenLength - 2] == '/' && token[tokenLength - 1] == '>') return ResolveType("XML", inFile);
+                if (char.IsLetter(first))
+                {
+                    var index = token.IndexOfOrdinal(" ");
+                    if (index != -1)
+                    {
+                        var word = token.Substring(0, index);
+                        if (word == "delete") return ResolveType(features.booleanKey, inFile);
+                        if (word == "typeof") return ResolveType(features.stringKey, inFile);
+                        if (word == "new")
+                        {
+                            var dot = ' ';
+                            var parCount = 0;
+                            for (var i = 0; i < tokenLength; i++)
+                            {
+                                var c = token[i];
+                                if (c == '(') parCount++;
+                                else if (c == ')')
+                                {
+                                    parCount--;
+                                    if (parCount == 0) dot = '.';
+                                }
+                                else if (dot != ' ' && c == dot) return ClassModel.VoidClass;
+                            }
+                            token = token.Substring(index + 1);
+                            if (token[token.Length - 1] == ')') token = Regex.Replace(token, @"\(.*", string.Empty);
+                            return ResolveType(token, inFile);
+                        }
+                    }
+                }
+                else if (first == '(' && tokenLength >= 8/*"(v as T)".Length*/)
+                {
+                    var m = Regex.Match(token, @"\((?<lv>.+)\s(?<op>as)\s+(?<rv>\w+)\)");
+                    if (m.Success) return ResolveType(m.Groups["rv"].Value.Trim(), inFile);
+                    if (Regex.IsMatch(token, @"\((?<lv>.+)\s(?<op>is)\s+(?<rv>\w+)\)")) return ResolveType(features.booleanKey, inFile);
+                }
+            }
+            return base.ResolveToken(token, inFile);
         }
 
         /// <summary>
@@ -902,6 +944,11 @@ namespace AS3Context
         {
             ClassModel originalClass = base.ResolveType(baseType, inFile);
             if (originalClass.IsVoid()) return originalClass;
+            if (indexType == "*")
+            {
+                originalClass.IndexType = "*";
+                return originalClass;
+            }
 
             ClassModel indexClass = ResolveType(indexType, inFile);
             if (indexClass.IsVoid()) return originalClass;
@@ -948,14 +995,15 @@ namespace AS3Context
         {
             MemberList list = new MemberList();
             // private classes
-            foreach(ClassModel model in cFile.Classes)
-                if (model.Access == Visibility.Private)
-                {
-                    MemberModel item = model.ToMemberModel();
-                    item.Type = item.Name;
-                    item.Access = Visibility.Private;
-                    list.Add(item);
-                }
+            if (cFile != null)
+                foreach (ClassModel model in cFile.Classes)
+                    if (model.Access == Visibility.Private)
+                    {
+                        MemberModel item = model.ToMemberModel();
+                        item.Type = item.Name;
+                        item.Access = Visibility.Private;
+                        list.Add(item);
+                    }
             // 'Class' members
             if (cClass != null)
                 foreach (MemberModel member in cClass.Members)
