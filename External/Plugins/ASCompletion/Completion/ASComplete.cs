@@ -4314,7 +4314,7 @@ namespace ASCompletion.Completion
                         {
                             var types = ASComplete.GetTypeParameters(AsEnumerable(sci, endWord + 1, sci.TextLength));
 
-                            res.Type = ResolveType(res.Type.Name + "<" + string.Join(",", types.Items.Select(x => x.Name).ToArray()) + ">", res.RelClass != null ? res.RelClass.InFile : res.Type.InFile);
+                            res.Type = ResolveType(res.Path + "<" + string.Join(",", types.Items.Select(x => x.Name).ToArray()) + ">", res.RelClass != null ? res.RelClass.InFile : res.Type.InFile);
                         }
                     }
                 }

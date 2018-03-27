@@ -1135,7 +1135,7 @@ namespace HaXeContext
             MemberList templateNames = ASComplete.GetTypeParameters(aClass);
             string[] indexTypes = ASComplete.GetTypeParameters(indexType).Items.Select(x => x.Name).ToArray();
             // In case we have a not completely or wrongly defined type
-            count = Math.Min(indexTypes.Length, templateNames.Count);
+            count = Math.Min(indexTypes.Length, templateNames?.Count ?? 0);
 
             for (int i = 0; i < count; i++)
             {
