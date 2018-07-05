@@ -4,7 +4,10 @@ using ASCompletion.Model;
 using ASCompletion.TestUtils;
 using NSubstitute;
 using NUnit.Framework;
+using PluginCore;
+using PluginCore.Controls;
 using PluginCore.Helpers;
+using PluginCore.Managers;
 using ScintillaNet;
 
 //TODO: Sadly most of ASComplete is currently untestable in a proper way. Work on this branch solves it: https://github.com/Neverbirth/flashdevelop/tree/completionlist
@@ -14,13 +17,13 @@ namespace ASCompletion.Completion
     [TestFixture]
     public class ASCompleteTests : ASCompletionTests
     {
-        internal static ASResult GetExpressionType(ScintillaControl sci, string sourceText)
+        static ASResult GetExpressionType(ScintillaControl sci, string sourceText)
         {
             SetSrc(sci, sourceText);
             return ASComplete.GetExpressionType(sci, sci.WordEndPosition(sci.CurrentPos, true));
         }
 
-        internal static string GetExpression(ScintillaControl sci, string sourceText)
+        static string GetExpression(ScintillaControl sci, string sourceText)
         {
             SetSrc(sci, sourceText);
             var expr = ASComplete.GetExpression(sci, sci.CurrentPos);
@@ -36,13 +39,13 @@ namespace ASCompletion.Completion
             return $"{expr.WordBefore}{expr.Separator}{value}{expr.RightOperator}";
         }
 
-        internal static ComaExpression DisambiguateComa(ScintillaControl sci, string sourceText)
+        static ComaExpression DisambiguateComa(ScintillaControl sci, string sourceText)
         {
             sci.Text = sourceText;
             return ASComplete.DisambiguateComa(sci, sourceText.Length, 0);
         }
 
-        internal static int FindParameterIndex(ScintillaControl sci, string sourceText)
+        static int FindParameterIndex(ScintillaControl sci, string sourceText)
         {
             sci.Text = sourceText;
             sci.Colourise(0, -1);
@@ -53,17 +56,60 @@ namespace ASCompletion.Completion
             return result;
         }
 
-        internal static int ExpressionEndPosition(ScintillaControl sci, string sourceText)
+        static int ExpressionEndPosition(ScintillaControl sci, string sourceText)
         {
             SetSrc(sci, sourceText);
             return ASComplete.ExpressionEndPosition(sci, sci.CurrentPos);
         }
 
+        protected static void OnChar(ScintillaControl sci, string sourceText, char addedChar, bool autoHide, bool hasCompletion)
+        {
+            var passed = true;
+            var handler = Substitute.For<IEventHandler>();
+            handler
+                .When(it => it.HandleEvent(Arg.Any<object>(), Arg.Any<NotifyEvent>(), Arg.Any<HandlingPriority>()))
+                .Do(it =>
+                {
+                    var e = it.ArgAt<NotifyEvent>(1);
+                    if (e.Type != EventType.Command) return;
+                    var de = (DataEvent)e;
+                    if (de.Action != "ASCompletion.DotCompletion") return;
+                    if (hasCompletion) passed = ((IList<ICompletionListItem>)de.Data).Count > 0;
+                    else passed = false;
+                });
+            EventManager.AddEventHandler(handler, EventType.Command);
+            SetSrc(sci, sourceText);
+            ASContext.HasContext = true;
+            Assert.AreEqual(hasCompletion, ASComplete.OnChar(sci, addedChar, autoHide));
+            Assert.IsTrue(passed);
+            EventManager.RemoveEventHandler(handler);
+        }
+
+        protected static string OnCharAndReplaceText(ScintillaControl sci, string sourceText, char addedChar, bool autoHide)
+        {
+            PluginBase.MainForm.CurrentDocument.IsEditable.Returns(true);
+            var manager = UITools.Manager;
+            SetSrc(sci, sourceText);
+            ASContext.Context.CurrentClass.InFile.Context = ASContext.Context;
+            ASContext.HasContext = true;
+            //{ Update completion cache
+            var ctx = ASContext.GetLanguageContext(sci.ConfigurationLanguage);
+            var visibleExternalElements = ctx.GetVisibleExternalElements();
+            ASContext.Context.GetVisibleExternalElements().Returns(visibleExternalElements);
+            //}
+            ASComplete.OnChar(sci, addedChar, autoHide);
+            Assert.IsNotNullOrEmpty(CompletionList.SelectedLabel);
+            CompletionList.OnInsert += ASComplete.HandleCompletionInsert;
+            CompletionList.ReplaceText(sci, '\0');
+            CompletionList.OnInsert -= ASComplete.HandleCompletionInsert;
+            return sci.Text;
+        }
+
         public class ActonScript3 : ASCompleteTests
         {
-            protected static string ReadAllText(string fileName) => TestFile.ReadAllText(GetFullPath(fileName));
+            static string ReadAllText(string fileName) => TestFile.ReadAllText(GetFullPath(fileName));
 
-            protected static string GetFullPath(string fileName) => $"ASCompletion.Test_Files.completion.as3.{fileName}.as";
+            static string GetFullPath(string fileName) => $"{nameof(ASCompletion)}.Test_Files.completion.as3.{fileName}.as";
 
             [TestFixtureSetUp]
             public void Setup() => SetAs3Features(sci);
@@ -218,47 +264,222 @@ namespace ASCompletion.Completion
                 return expr.Member;
             }
 
+            static IEnumerable<TestCaseData> GetExpressionType_as_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_1"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' as String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_2"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("return ('s' as String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_3"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' as String).charAt(0).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_4"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('...' as String).charAt(0).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_5"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' as String).split().");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_6"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' as String).split.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_7"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("for each(var it:* in (a as Array).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_8"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("for each(var it:* in (a as Array).concat([1]).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_9"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("for each(var it:* in [1,2,3,4].");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_is_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_1"))
+                        .Returns(new ClassModel { Name = "Boolean", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' is String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_2"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' is String).toString.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_3"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' is String).toString().");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_4"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("('s' is String).toString().length.");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_StringInitializer_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_1"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("\"\".");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_2"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("''.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue2029_1"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'123'.length.")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2029");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue2029_2"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'123'.toString.")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2029");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue2029_3"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'123'.toString(10).")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2029");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue2029_4"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'123'.toString(10).length.")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2029");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_3"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("\"...\".");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_4"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'...'.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_5"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'>.['.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_6"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'.<'.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_7"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("'#RegExp'.");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_Vector_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue1383_1"))
+                        .Returns(new ClassModel { Name = "Vector.<int>", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new Vector.<int>()")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/1383");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue1383_2"))
+                        .Returns(new ClassModel { Name = "Vector", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new Vector.<*>()")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/1383");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_1"))
+                        .Returns(new ClassModel { Name = "Vector.<int>", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new <int>[].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_2"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new <int>[].length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_3"))
+                        .Returns(new ClassModel { Name = "Vector.<int>", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new <int>[].concat(new <int>[1,2,3]).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_4"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new <int>[].concat(new <int>[1,2,3]).push.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_5"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new Vector.<int>().length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_6"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new Vector.<int>().push.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_VectorInitializer_7"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("new Vector.<int>().join(',').");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_XML_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_XMLInitializer_1"))
+                        .Returns(new ClassModel { Name = "XML", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("<xml/>.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_XMLInitializer_2"))
+                        .Returns(new ClassModel { Name = "Boolean", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("<xml/>.contains(<xml/>).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_XMLInitializer_3"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("<xml/>.contains.");
+                }
+            }
+
             static IEnumerable<TestCaseData> GetExpressionType_TypeTestCases
             {
                 get
                 {
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as"))
-                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("('s' as String).");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_as_2"))
-                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("return ('s' as String).");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is"))
-                        .Returns(new ClassModel {Name = "Boolean", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("('s' is String).");
                     yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer"))
-                        .Returns(new ClassModel {Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
                         .SetName("[].");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer"))
-                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("\"\".");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_2"))
-                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("''.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_2"))
+                        .Returns(new ClassModel { Name = "Object", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("[].concat([])[0].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_3"))
+                        .Returns(new ClassModel { Name = "uint", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("[].length.");
                     yield return new TestCaseData(ReadAllText("GetExpressionType_Type_objectInitializer"))
-                        .Returns(new ClassModel {Name = "Object", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .Returns(new ClassModel { Name = "Object", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
                         .SetName("{}.");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue2029_1"))
-                        .Returns(new ClassModel {Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
-                        .SetName("'123'.length.")
-                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2029");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue1383_1"))
-                        .Returns(new ClassModel {Name = "Vector.<int>", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore})
-                        .SetName("new Vector.<int>()")
-                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/1383");
-                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_issue1383_2"))
-                        .Returns(new ClassModel {Name = "Vector", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore})
-                        .SetName("new Vector.<*>()")
-                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/1383");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_SafeCast_1"))
+                        .Returns(new ClassModel { Name = "String", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("String(v).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_SafeCast_2"))
+                        .Returns(new ClassModel { Name = "Function", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("String(v).charAt.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_SafeCast_3"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("String(v).split().");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_SafeCast_3"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("String(v).split().length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_1"))
+                        .Returns(new ClassModel { Name = "Boolean", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof Boolean(v).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_2"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof Boolean(v).toString().length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_3"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof v.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_4"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof v.length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_5"))
+                        .Returns(new ClassModel { Name = "int", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof new Vector.<int>(10, true).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_6"))
+                        .Returns(new ClassModel { Name = "uint", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof [].length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typeof_7"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("typeof [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_return_1"))
+                        .Returns(new ClassModel { Name = "Array", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("return [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_return_2"))
+                        .Returns(new ClassModel { Name = "uint", Flags = FlagType.Class, Access = Visibility.Public, InFile = FileModel.Ignore })
+                        .SetName("return [].length.");
                 }
             }
 
-            [Test, TestCaseSource(nameof(GetExpressionType_TypeTestCases))]
+            [
+                Test,
+                TestCaseSource(nameof(GetExpressionType_as_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_is_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_StringInitializer_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_Vector_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_XML_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_TypeTestCases)),
+            ]
             public ClassModel GetExpressionType_Type(string sourceText)
             {
                 var expr = GetExpressionType(sci, sourceText);
@@ -341,111 +562,87 @@ namespace ASCompletion.Completion
                         new TestCaseData(ReadAllText("GetExpressionOfTwoDimensionalVectorInitializer"))
                             .Returns("new <Vector.<int>>[new <int>[]]")
                             .SetName("From new <Vector.<int>>[new <int>[]]|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfArrayAccess"))
-                            .Returns(",[4,5,6].[0].[2]")
-                            .SetName("From [[1,2,3], [4,5,6][0][2]|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewVector"))
-                            .Returns("new Vector.<String>")
-                            .SetName("From new Vector.<String>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewTwoDimensionalVector"))
-                            .Returns("new Vector.<Vector.<String>>")
-                            .SetName("From new Vector.<Vector.<String>>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfArrayAccess"))
+                        .Returns(",[4,5,6][0][2]")
+                        .SetName("From [[1,2,3], [4,5,6][0][2]|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewVector"))
+                        .Returns("new Vector.<String>")
+                        .SetName("From new Vector.<String>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewTwoDimensionalVector"))
+                        .Returns("new Vector.<Vector.<String>>")
+                        .SetName("From new Vector.<Vector.<String>>|");
                     yield return new TestCaseData(ReadAllText("GetExpressionOfRegex"))
-                        .Returns(" #RegExp")
+                        .Returns(";#RegExp")
                         .SetName("From /regex/g|")
                         .SetDescription("https://github.com/fdorg/flashdevelop/issues/1880");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfDigit"))
-                            .Returns(";1")
-                            .SetName("From 1|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNumber"))
-                            .Returns(";10.0")
-                            .SetName("From 10.0|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfInt"))
-                            .Returns("-1")
-                            .SetName("From -1|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfBoolean"))
-                            .Returns(";true")
-                            .SetName("From true|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfXML"))
-                            .Returns(";</>")
-                            .SetName("<xml/>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_plus"))
-                            .Returns("+1")
-                            .SetName("1 + 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_minus"))
-                            .Returns("-1")
-                            .SetName("1 - 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_mul"))
-                            .Returns("*1")
-                            .SetName("1 * 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_division"))
-                            .Returns("/1")
-                            .SetName("1 / 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_increment"))
-                            .Returns("++1")
-                            .SetName("++1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_increment2"))
-                            .Returns(";1++")
-                            .SetName("1++. case 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_increment3"))
-                            .Returns(";1++")
-                            .SetName("1++. case 2");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_increment4"))
-                            .Returns(";a++")
-                            .SetName("a++");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_increment5"))
-                            .Returns("=getId()++")
-                            .SetName("var id = getId()++");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement"))
-                            .Returns("--1")
-                            .SetName("--1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement2"))
-                            .Returns(";1--")
-                            .SetName("1--. case 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement3"))
-                            .Returns(";1--")
-                            .SetName("1--. case 2");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement4"))
-                            .Returns(";a--")
-                            .SetName("a--");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement5"))
-                            .Returns("=getId()--")
-                            .SetName("var id = getId()--");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement6"))
-                            .Returns("* ++1")
-                            .SetName("5 * ++1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_decrement7"))
-                            .Returns("*1++")
-                            .SetName("5 * 1++");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfDigit"))
+                        .Returns(";1")
+                        .SetName("From 1|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNumber"))
+                        .Returns(";10.0")
+                        .SetName("From 10.0|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfInt"))
+                        .Returns("-1")
+                        .SetName("From -1|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfBoolean"))
+                        .Returns(";true")
+                        .SetName("From true|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfXML"))
+                        .Returns(";</>")
+                        .SetName("<xml/>|");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_plus"))
+                        .Returns("+1")
+                        .SetName("1 + 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_minus"))
+                        .Returns("-1")
+                        .SetName("1 - 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_mul"))
+                        .Returns("*1")
+                        .SetName("1 * 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_division"))
+                        .Returns("/1")
+                        .SetName("1 / 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_increment"))
+                        .Returns("++1")
+                        .SetName("++1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_increment2"))
+                        .Returns(";1++")
+                        .SetName("1++. case 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_increment3"))
+                        .Returns(";1++")
+                        .SetName("1++. case 2");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_increment4"))
+                        .Returns(";a++")
+                        .SetName("a++");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_increment5"))
+                        .Returns("=getId()++")
+                        .SetName("var id = getId()++");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement"))
+                        .Returns("--1")
+                        .SetName("--1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement2"))
+                        .Returns(";1--")
+                        .SetName("1--. case 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement3"))
+                        .Returns(";1--")
+                        .SetName("1--. case 2");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement4"))
+                        .Returns(";a--")
+                        .SetName("a--");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement5"))
+                        .Returns("=getId()--")
+                        .SetName("var id = getId()--");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement6"))
+                        .Returns("* ++1")
+                        .SetName("5 * ++1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_decrement7"))
+                        .Returns("*1++")
+                        .SetName("5 * 1++");
                     yield return new TestCaseData(ReadAllText("GetExpression_issue1908_typeof"))
                         .Returns("typeof 1")
                         .SetName("typeof 1");
                     yield return new TestCaseData(ReadAllText("GetExpression_issue1908_delete"))
-                        .Returns("delete o.[k]")
+                        .Returns("delete o[k]")
                         .SetName("delete o[k]");
                     yield return new TestCaseData(ReadAllText("GetExpression_operator_is"))
                         .Returns(";(\"s\" is String).")
@@ -564,20 +761,213 @@ namespace ASCompletion.Completion
 
             [Test, TestCaseSource(nameof(ExpressionEndPositionTestCases))]
             public int ExpressionEndPosition(string sourceText) => ExpressionEndPosition(sci, sourceText);
+
+            static IEnumerable<TestCaseData> OnCharTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData("OnChar_1", '.', false, true)
+                        .SetName("this.|");
+                    yield return new TestCaseData("OnChar_3", '.', false, true)
+                        .SetName("''.|");
+                    yield return new TestCaseData("OnChar_4", '.', false, true)
+                        .SetName("[].|");
+                    yield return new TestCaseData("OnChar_7", '.', false, false)
+                        .SetName("1.|");
+                    yield return new TestCaseData("OnChar_8", '.', false, true)
+                        .SetName("true.|")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2105");
+                    yield return new TestCaseData("OnChar_9", '.', false, true)
+                        .SetName("0xFF0000.|");
+                    yield return new TestCaseData("OnChar_10", '.', false, true)
+                        .SetName("{}.|");
+                    yield return new TestCaseData("OnChar_2", '.', false, false)
+                        .Ignore("Completion shouldn't work for this case.")
+                        .SetName("this.|. inside static function");
+                }
+            }
+
+            static IEnumerable<TestCaseData> OnCharIssue2105TestCases
+            {
+                get
+                {
+                    yield return new TestCaseData("OnCharIssue2105_5", '.', false, false)
+                        .SetName("'.|' Issue2105. Case 1.")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2105");
+                    yield return new TestCaseData("OnCharIssue2105_6", '.', false, false)
+                        .SetName("\".|\" Issue2105. Case 2.")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2105");
+                }
+            }
+
+            [
+                Test,
+                TestCaseSource(nameof(OnCharTestCases)),
+                TestCaseSource(nameof(OnCharIssue2105TestCases)),
+            ]
+            public void OnChar(string fileName, char addedChar, bool autoHide, bool hasCompletion) => OnChar(sci, ReadAllText(fileName), addedChar, autoHide, hasCompletion);
+
+            static IEnumerable<TestCaseData> OnCharIssue2076TestCases
+            {
+                get
+                {
+                    yield return new TestCaseData("BeforeOnCharIssue2076_1", ' ', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_1"))
+                        .SetName("var v:Sprite = new | ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_2", ' ', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_2"))
+                        .SetName("override | ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_3", ' ', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_3"))
+                        .SetName("extends | ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_4", ' ', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_4"))
+                        .SetName("implements | ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_5", ':', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_5"))
+                        .SetName("function foo(v:| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_6", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_6"))
+                        .SetName("function foo(v:flash.display.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_7", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_7"))
+                        .SetName("this.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_8", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_8"))
+                        .SetName("[].| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_9", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_9"))
+                        .SetName("''.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_10", '.', true)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_10"))
+                        .SetName("0x1.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_11", '.', true)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_11"))
+                        .SetName("true.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_12", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_12"))
+                        .SetName("(v as String).| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_13", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_13"))
+                        .SetName("(v is String).| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_14", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_14"))
+                        .SetName("(v is String).toString().| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_15", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_15"))
+                        .SetName("new Vector.<int>(10, true).| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_16", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_16"))
+                        .SetName("new Vector.<int>(10, true).join(',').| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_17", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_17"))
+                        .SetName("new <int>[1,2,3].| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_18", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_18"))
+                        .SetName("new <int>[1,2,3].join(',').| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_19", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_19"))
+                        .SetName("String.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_20", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_20"))
+                        .SetName("typeof String.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_21", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_21"))
+                        .SetName("String.fromCharCode(0).| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_22", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_22"))
+                        .SetName("String.fromCharCode.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_23", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_23"))
+                        .SetName("super.| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_24", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_24"))
+                        .SetName("[super.| ]")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                    yield return new TestCaseData("BeforeOnCharIssue2076_25", '.', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2076_25"))
+                        .SetName("new Date().| ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2076");
+                }
+            }
+
+            static IEnumerable<TestCaseData> OnCharIssue2134TestCases
+            {
+                get
+                {
+                    yield return new TestCaseData("BeforeOnCharIssue2134_1", ' ', false)
+                        .Returns(ReadAllText("AfterOnCharIssue2134_1"))
+                        .SetName("override | ")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2134");
+                }
+            }
+
+            [
+                Test,
+                TestCaseSource(nameof(OnCharIssue2076TestCases)),
+                TestCaseSource(nameof(OnCharIssue2134TestCases)),
+            ]
+            public string OnCharAndReplaceText(string fileName, char addedChar, bool autoHide) => OnCharAndReplaceText(sci, ReadAllText(fileName), addedChar, autoHide);
+
+            static IEnumerable<TestCaseData> GetToolTipTextTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData("GetToolTipText_1")
+                        .SetName("new B|(). Case 1. Class without constructor")
+                        .Returns("public Bar ()\n[COLOR=Black]in Bar[/COLOR]");
+                    yield return new TestCaseData("GetToolTipText_2")
+                        .SetName("new B|(). Case 2. Class with explicit constructor")
+                        .Returns("public Bar (v:int)\n[COLOR=Black]in Bar[/COLOR]");
+                    yield return new TestCaseData("GetToolTipText_4")
+                        .SetName("new B|(). Case 4. Class with explicit constructor")
+                        .Returns("public Bar ()\n[COLOR=Black]in Bar[/COLOR]");
+                    yield return new TestCaseData("GetToolTipText_3")
+                        .SetName("new B|(). Case 3. Class with implicit constructor")
+                        .Returns("public Bar ()\n[COLOR=Black]in Bar[/COLOR]");
+                }
+            }
+
+            [Test, TestCaseSource(nameof(GetToolTipTextTestCases))]
+            public string GetToolTipText(string fileName)
+            {
+                SetSrc(sci, ReadAllText(fileName));
+                var expr = ASComplete.GetExpressionType(sci, sci.CurrentPos, false, true);
+                return ASComplete.GetToolTipText(expr);
+            }
         }
 
         public class Haxe : ASCompleteTests
         {
-            protected static string ReadAllText(string fileName) => TestFile.ReadAllText(GetFullPath(fileName));
+            static string ReadAllText(string fileName) => TestFile.ReadAllText(GetFullPath(fileName));
 
-            protected static string GetFullPath(string fileName) => $"ASCompletion.Test_Files.completion.haxe.{fileName}.hx";
+            static string GetFullPath(string fileName) => $"{nameof(ASCompletion)}.Test_Files.completion.haxe.{fileName}.hx";
 
             [TestFixtureSetUp]
-            public void Setup()
-            {
-                ASContext.Context.SetHaxeFeatures();
-                sci.ConfigurationLanguage = "haxe";
-            }
+            public void Setup() => SetHaxeFeatures(sci);
 
             static IEnumerable<TestCaseData> GetExpressionTypeTestCases
             {
@@ -685,88 +1075,268 @@ namespace ASCompletion.Completion
                 return expr.Member;
             }
 
-            static IEnumerable<TestCaseData> GetExpressionType_TypeTestCases
+            static IEnumerable<TestCaseData> GetExpressionType_untyped_TypeTestCases
             {
                 get
                 {
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("('s':String).");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_2"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("return ('s':String).");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_cast"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("cast('s', String).");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_cast"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("return cast('s', String).");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_is"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "Bool",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("('s' is String).");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "Array<T>",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("[].");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_mapInitializer"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "Map<K, V>",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("[1=>1].");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("\"\".");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_2"))
-                            .Returns(new ClassModel
-                            {
-                                Name = "String",
-                                Flags = FlagType.Class
-                            })
-                            .SetName("''.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_untyped_1"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("untyped 's'.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_untyped_2"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("untyped [].");
                 }
             }
 
-            [Test, TestCaseSource(nameof(GetExpressionType_TypeTestCases))]
+            static IEnumerable<TestCaseData> GetExpressionType_cast_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("cast('s', String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_2"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("return cast('s', String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_3"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("cast('s', String).length");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_4"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("cast('s', String).charAt(0).length");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_5"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("cast('...', String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_6"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("cast('...', String).charAt(0).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_7"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("cast(', Int', String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_8"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("cast ( 's' , String ).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_9"))
+                        .Returns(new ClassModel {Name = "Array<String>", Flags = FlagType.Class})
+                        .SetName("cast('s', String).split('').");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_10"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("cast('s', String).charAt.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_11"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("cast [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_12"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("cast [].concat.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_cast_13"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("cast [].concat([1]).length.");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_is_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_1"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("('s' is String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_2"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("(' is ' is String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_3"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("('v is Int' is String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_4"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("('(v is Int)' is String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_5"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("( 's' is String ).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_6"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("switch ( 's' is String ).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_is_7"))
+                        .Returns(new ClassModel {Name = "Bool", Flags = FlagType.Class})
+                        .SetName("return ( 's' is String ).");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_ArrayInitializer_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_1"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("[].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_2"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("['...'].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_3"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("['=>'].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_4"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("[[1 => 2], [2 => 3]].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_5"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("[].length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_6"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("[].concat.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_7"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("[].concat([]).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_8"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("[].concat([]).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_9"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("[].concat([])[0].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_10"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("return [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_11"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("switch [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_12"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("for(it in [].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_13"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("var l = try [1]. catch(e:Dynamic) 1;");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_14"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("var l = try [1].concat. catch(e:Dynamic) 1;");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_15"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("case [1, 2].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_16"))
+                        .Returns(new ClassModel {Name = "Array<T>", Flags = FlagType.Class})
+                        .SetName("var a = [1, 2].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_17"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("[1 => [1].concat.]");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_arrayInitializer_18"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("{c:[1].concat.}");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_MapInitializer_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_mapInitializer_1"))
+                        .Returns(new ClassModel {Name = "Map<K, V>", Flags = FlagType.Class})
+                        .SetName("[1=>1].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_mapInitializer_2"))
+                        .Returns(new ClassModel {Name = "Map<K, V>", Flags = FlagType.Class})
+                        .SetName("['...' => 1, '1' => '...'].");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_StringInitializer_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("\"\".");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_2"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("''.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_3"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("''.length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_4"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("''.charAt.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_5"))
+                        .Returns(new ClassModel {Name = "Array<String>", Flags = FlagType.Class})
+                        .SetName("''.split('').");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_6"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("''.split('').length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_7"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("''.split('')[0].");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_8"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("'...'.length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_stringInitializer_9"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("\"...\".length.");
+                }
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionType_new_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_new_1"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("new String('').");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_new_2"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("new String('').charAt.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_new_3"))
+                        .Returns(new ClassModel {Name = "Array<String>", Flags = FlagType.Class})
+                        .SetName("new String('').split('').");
+                }
+            }
+
+            [
+                Test,
+                TestCaseSource(nameof(GetExpressionType_untyped_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_cast_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_is_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_ArrayInitializer_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_MapInitializer_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_StringInitializer_TypeTestCases)),
+                TestCaseSource(nameof(GetExpressionType_new_TypeTestCases)),
+            ]
             public ClassModel GetExpressionType_Type(string sourceText)
             {
+                var expr = GetExpressionType(sci, sourceText);
+                return expr.Type;
+            }
+
+            static IEnumerable<TestCaseData> GetExpressionTypeSDK_340_TypeTestCases
+            {
+                get
+                {
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("('s':String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_2"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("return ('s':String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_3"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("return ('...':String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_4"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("('...' : String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_5"))
+                        .Returns(new ClassModel {Name = "String", Flags = FlagType.Class})
+                        .SetName("('v:Int' : String).");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_6"))
+                        .Returns(new ClassModel {Name = "Int", Flags = FlagType.Class})
+                        .SetName("('s':String).charAt(0).length.");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_7"))
+                        .Returns(new ClassModel {Name = "Array<String>", Flags = FlagType.Class})
+                        .SetName("('s':String).split('').");
+                    yield return new TestCaseData(ReadAllText("GetExpressionType_Type_typecheck_8"))
+                        .Returns(new ClassModel {Name = "Function", Flags = FlagType.Class})
+                        .SetName("('s':String).split.");
+                }
+            }
+
+            [Test, TestCaseSource(nameof(GetExpressionTypeSDK_340_TypeTestCases))]
+            public ClassModel GetExpressionType_Type_SDK_340(string sourceText)
+            {
+                ASContext.Context.Settings.InstalledSDKs = new[] {new InstalledSDK {Path = PluginBase.CurrentProject.CurrentSDK, Version = "3.4.0"}};
                 var expr = GetExpressionType(sci, sourceText);
                 return expr.Type;
             }
@@ -783,63 +1353,49 @@ namespace ASCompletion.Completion
             {
                 get
                 {
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewMap"))
-                            .Returns("new Map<String, Int>")
-                            .SetName("From new Map<String, Int>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewMap2"))
-                            .Returns("new Map<Map<String, Int>, Int>")
-                            .SetName("From new Map<Map<String, Int>, Int>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewMap3"))
-                            .Returns("new Map<String, Array<Map<String, Int>>>")
-                            .SetName("From new Map<String, Array<Map<String, Int>>>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewMap4"))
-                            .Returns("new Map<String, Array<Int->Int->Int>>")
-                            .SetName("From new Map<String, Array<Int->Int->Int>>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfMapInitializer"))
-                            .Returns(";[\"1\" => 1, \"2\" => 2]")
-                            .SetName("From [\"1\" => 1, \"2\" => 2]|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfRegex"))
-                            .Returns(";g")
-                            .SetName("~/regex/g|")
-                            .Ignore("https://github.com/fdorg/flashdevelop/issues/1880");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewArray"))
-                            .Returns("new Array<Int>")
-                            .SetName("From new Array<Int>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewArray2"))
-                            .Returns("new Array<{x:Int, y:Int}>")
-                            .SetName("From new Array<{x:Int, y:Int}>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfNewArray3"))
-                            .Returns("new Array<{name:String, params:Array<Dynamic>}>")
-                            .SetName("From new Array<{name:String, params:Array<Dynamic>}>|");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpressionOfStringInterpolation.charAt"))
-                            .Returns(";'result: ${1 + 2}'.charAt")
-                            .SetName("'result: ${1 + 2}'.charAt");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_plus"))
-                            .Returns("+1")
-                            .SetName("1 + 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_minus"))
-                            .Returns("-1")
-                            .SetName("1 - 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_mul"))
-                            .Returns("*1")
-                            .SetName("1 * 1");
-                    yield return
-                        new TestCaseData(ReadAllText("GetExpression_issue1749_division"))
-                            .Returns("/1")
-                            .SetName("1 / 1");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewMap"))
+                        .Returns("new Map<String, Int>")
+                        .SetName("From new Map<String, Int>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewMap2"))
+                        .Returns("new Map<Map<String, Int>, Int>")
+                        .SetName("From new Map<Map<String, Int>, Int>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewMap3"))
+                        .Returns("new Map<String, Array<Map<String, Int>>>")
+                        .SetName("From new Map<String, Array<Map<String, Int>>>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewMap4"))
+                        .Returns("new Map<String, Array<Int->Int->Int>>")
+                        .SetName("From new Map<String, Array<Int->Int->Int>>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfMapInitializer"))
+                        .Returns(";[\"1\" => 1, \"2\" => 2]")
+                        .SetName("From [\"1\" => 1, \"2\" => 2]|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfRegex"))
+                        .Returns(";g")
+                        .SetName("~/regex/g|")
+                        .Ignore("https://github.com/fdorg/flashdevelop/issues/1880");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewArray"))
+                        .Returns("new Array<Int>")
+                        .SetName("From new Array<Int>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewArray2"))
+                        .Returns("new Array<{x:Int, y:Int}>")
+                        .SetName("From new Array<{x:Int, y:Int}>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfNewArray3"))
+                        .Returns("new Array<{name:String, params:Array<Dynamic>}>")
+                        .SetName("From new Array<{name:String, params:Array<Dynamic>}>|");
+                    yield return new TestCaseData(ReadAllText("GetExpressionOfStringInterpolation.charAt"))
+                        .Returns(";'result: ${1 + 2}'.charAt")
+                        .SetName("'result: ${1 + 2}'.charAt");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_plus"))
+                        .Returns("+1")
+                        .SetName("1 + 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_minus"))
+                        .Returns("-1")
+                        .SetName("1 - 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_mul"))
+                        .Returns("*1")
+                        .SetName("1 * 1");
+                    yield return new TestCaseData(ReadAllText("GetExpression_issue1749_division"))
+                        .Returns("/1")
+                        .SetName("1 / 1");
                     yield return
                         new TestCaseData(ReadAllText("GetExpression_issue1749_increment"))
                             .Returns("++1")
@@ -912,10 +1468,9 @@ namespace ASCompletion.Completion
                         new TestCaseData("${(v:{x:Int, y:Int->Array<Int>}).$(EntryPoint)")
                             .Returns(";(v:{x:Int, y:Int->Array<Int>}).")
                             .SetName("${(v:{x:Int, y:Int->Array<Int>}).|");
-                    yield return
-                        new TestCaseData("case _: (v:{x:Int, y:Int->Array<Int>}).$(EntryPoint)")
-                            .Returns(":(v:{x:Int, y:Int->Array<Int>}).")
-                            .SetName("case _: {(v:{x:Int, y:Int->Array<Int>}).|");
+                    yield return new TestCaseData("case _: (v:{x:Int, y:Int->Array<Int>}).$(EntryPoint)")
+                        .Returns(":(v:{x:Int, y:Int->Array<Int>}).")
+                        .SetName("case _: (v:{x:Int, y:Int->Array<Int>}).|");
                     yield return new TestCaseData("function foo(Math.random() > .5 || Math.random() < 0.5 ? {x:10, y:10} : null).$(EntryPoint)")
                         .Returns("function foo(Math.random() > .5 || Math.random() < 0.5 ? {x:10, y:10} : null).")
                         .SetName("function foo(Math.random() > .5 || Math.random() < 0.5 ? {x:10, y:10} : null).|");
@@ -928,6 +1483,14 @@ namespace ASCompletion.Completion
                     yield return new TestCaseData("function foo(1 >>> 3).$(EntryPoint)")
                         .Returns("function foo(1 >>> 3).")
                         .SetName("function foo(1 >>> 3).|");
+                    yield return new TestCaseData("cast(v, String).charAt(0).charAt(1).charAt(2).charAt(3).charAt(4).charAt(5).charAt(6).charAt(7).charAt(8).charAt(9).charAt(10).charAt(11).$(EntryPoint)")
+                        .Returns("cast;(v, String).charAt(0).charAt(1).charAt(2).charAt(3).charAt(4).charAt(5).charAt(6).charAt(7).charAt(8).charAt(9).charAt(10).charAt(11).")
+                        .SetName("cast(v, String).charAt(0).charAt(1).charAt(2).charAt(3).charAt(4).charAt(5).charAt(6).charAt(7).charAt(8).charAt(9).charAt(10).charAt(11).|")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2108");
+                    yield return new TestCaseData("cast(v, String).charAt.$(EntryPoint)")
+                        .Returns("cast;(v, String).charAt.")
+                        .SetName("cast(v, String).charAt.|")
+                        .SetDescription("https://github.com/fdorg/flashdevelop/issues/2108");
                 }
             }
 
@@ -1115,6 +1678,9 @@ namespace ASCompletion.Completion
                         .Returns("[function() {return 1;}]".Length);
                     yield return new TestCaseData("'12345'; //")
                         .Returns("'12345'".Length);
+                    yield return new TestCaseData("'${1$(EntryPoint)2345}'; //")
+                        .Ignore("")
+                        .Returns("'${12345".Length);
                 }
             }
 
@@ -1130,7 +1696,7 @@ namespace ASCompletion.Completion
             [TestFixtureSetUp]
             public void AddClosingBracesSetUp() => ASContext.CommonSettings.AddClosingBraces = true;
 
-            public IEnumerable<TestCaseData> OpenBraceTestCases
+            static IEnumerable<TestCaseData> OpenBraceTestCases
             {
                 get
                 {
@@ -1194,7 +1760,7 @@ namespace ASCompletion.Completion
                 }
             }
 
-            public IEnumerable<TestCaseData> CloseBraceTestCases
+            static IEnumerable<TestCaseData> CloseBraceTestCases
             {
                 get
                 {
@@ -1209,7 +1775,7 @@ namespace ASCompletion.Completion
                 }
             }
 
-            public IEnumerable<TestCaseData> DeleteBraceTestCases
+            static IEnumerable<TestCaseData> DeleteBraceTestCases
             {
                 get
                 {
@@ -1222,7 +1788,7 @@ namespace ASCompletion.Completion
                 }
             }
 
-            public IEnumerable<TestCaseData> AroundStringsTestCases
+            static IEnumerable<TestCaseData> AroundStringsTestCases
             {
                 get
                 {
@@ -1243,7 +1809,7 @@ namespace ASCompletion.Completion
                 }
             }
 
-            public IEnumerable<TestCaseData> DeleteWhitespaceTestCases
+            static IEnumerable<TestCaseData> DeleteWhitespaceTestCases
             {
                 get
                 {
@@ -1260,7 +1826,7 @@ namespace ASCompletion.Completion
                 }
             }
 
-            public IEnumerable<TestCaseData> InsideInterpolationTestCases
+            static IEnumerable<TestCaseData> InsideInterpolationTestCases
             {
                 get
                 {

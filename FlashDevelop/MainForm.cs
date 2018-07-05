@@ -4063,6 +4063,8 @@ namespace FlashDevelop
         /// </summary>
         public Boolean CallCommand(String command, String args)
         {
+            if (this.IsDisposed) return false;
+
             try
             {
                 var method = this.GetType().GetMethod(command);

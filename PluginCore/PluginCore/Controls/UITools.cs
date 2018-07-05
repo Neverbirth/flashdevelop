@@ -189,7 +189,7 @@ namespace PluginCore.Controls
         /// </summary>
         public void MarkerChanged(ScintillaControl sender, int line)
         {
-            if (OnMarkerChanged != null) OnMarkerChanged(sender, line);
+            OnMarkerChanged?.Invoke(sender, line);
         }
 
         private void HandleDwellStart(ScintillaControl sci, int position, int x, int y)
@@ -199,7 +199,7 @@ namespace PluginCore.Controls
             {
                 // check mouse over the editor
                 if ((position < 0) || simpleTip.Visible || errorTip.Visible || CompletionList.HasMouseIn) return;
-                Point mousePos = Cursor.Position;//(PluginBase.MainForm as Form).PointToClient(Cursor.Position);
+                Point mousePos = Cursor.Position;//((Form) PluginBase.MainForm).PointToClient(Cursor.Position);
                 if (mousePos.X == lastMousePos.X && mousePos.Y == lastMousePos.Y)
                     return;
 
@@ -220,8 +220,7 @@ namespace PluginCore.Controls
                     if (bounds.Contains(mousePos))
                         return;
                 }
-                if (OnMouseHover != null) OnMouseHover(sci, position);
-
+                OnMouseHover?.Invoke(sci, position);
                 if (errorTip.Visible)
                 {
                     //move simpleTip up to not overlap error tip
@@ -257,7 +256,7 @@ namespace PluginCore.Controls
             if (!CompletionList.Active)
                 simpleTip.Hide();
             errorTip.Hide();
-            if (OnMouseHoverEnd != null) OnMouseHoverEnd(sci, position);
+            OnMouseHoverEnd?.Invoke(sci, position);
         }
 
         #endregion
